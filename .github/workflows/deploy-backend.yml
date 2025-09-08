@@ -1,0 +1,43 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main   # or backend branch if you have separate
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT }}
+          script: |
+            # Navigate to backend folder
+            cd /var/www/backend
+
+            # If first time, clone repo
+            if [ ! -d ".git" ]; then
+              git clone git@github.com:YOUR_USER/YOUR_BACKEND_REPO.git .
+            fi
+
+            # Reset & pull latest
+            git reset --hard
+            git pull origin main
+
+            # Install dependencies
+            npm install
+
+            # Restart backend with PM2
+            pm2 restart gbr-backend || pm2 start server.js --name gbr-backend
+
+            # Save PM2 state
+            pm2 save
