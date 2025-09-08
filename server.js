@@ -52,15 +52,15 @@ if (process.env.NODE_ENV === "production") {
     );
 
     // Permissions Policy - restrict APIs
-    app.use(
-        helmet.permissionsPolicy({
-            features: {
-                geolocation: ["'none'"],
-                microphone: ["'none'"],
-                camera: ["'none'"],
-            },
-        })
-    );
+    // app.use(
+    //     helmet.permissionsPolicy({
+    //         features: {
+    //             geolocation: ["'none'"],
+    //             microphone: ["'none'"],
+    //             camera: ["'none'"],
+    //         },
+    //     })
+    // );
 }
 
 // Disable x-powered-by always
