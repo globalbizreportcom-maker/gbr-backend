@@ -76,9 +76,10 @@ app.use(cors());
 app.use('/contact', contactRouter);
 
 
-app.get("/", () => {
-    res.json("Backend connected successfully")
-})
+app.get("/", (req, res) => {
+    res.json({ message: "Backend connected successfully" });
+});
+
 
 
 // Connect to DB then start server
