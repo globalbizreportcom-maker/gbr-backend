@@ -3,7 +3,7 @@ name: Deploy Backend
 on:
   push:
     branches:
-      - main   # or backend branch if you have separate
+      - main  # replace with your branch if different
 
 jobs:
   deploy:
@@ -24,12 +24,12 @@ jobs:
             # Navigate to backend folder
             cd /var/www/backend
 
-            # If first time, clone repo
+            # Clone repo if first time
             if [ ! -d ".git" ]; then
-              git clone git@github.com:YOUR_USER/YOUR_BACKEND_REPO.git .
+              git clone https://github.com/globalbizreportcom-maker/gbr-backend.git .
             fi
 
-            # Reset & pull latest
+            # Reset & pull latest code
             git reset --hard
             git pull origin main
 
@@ -37,7 +37,12 @@ jobs:
             npm install
 
             # Restart backend with PM2
-            pm2 restart gbr-backend || pm2 start server.js --name gbr-backend
+            pm2 describe gbr-backend > /dev/null 2>&1
+            if [ $? -eq 0 ]; then
+              pm2 restart gbr-backend
+            else
+              pm2 start server.js --name gbr-backend
+            fi
 
             # Save PM2 state
             pm2 save
