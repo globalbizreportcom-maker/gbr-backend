@@ -80,6 +80,10 @@ app.get("/", (req, res) => {
     res.json({ message: "Backend connected successfully" });
 });
 
+app.get("/test", (req, res) => {
+    res.json({ message: "Backend connected successfully" });
+});
+
 
 
 // Connect to DB then start server
