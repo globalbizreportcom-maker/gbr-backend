@@ -24,12 +24,12 @@ loginRouter.post("/send-otp", async (req, res) => {
         otpStore.set(email, { otp, expires: Date.now() + 5 * 60 * 1000 });
         console.log(otp);
         // Send email
-        // await transporter.sendMail({
-        //     from: "Global Biz Report<no-reply@globalbizreport.com>",
-        //     to: email,
-        //     subject: "Your OTP Code",
-        //     html: `<p>Your OTP code is <b>${otp}</b>. It is valid for 5 minutes.</p>`,
-        // });
+        await transporter.sendMail({
+            from: "Global Biz Report<no-reply@globalbizreport.com>",
+            to: email,
+            subject: "Your OTP Code",
+            html: `<p>Your OTP code is <b>${otp}</b>. It is valid for 5 minutes.</p>`,
+        });
 
         res.json({ success: true, message: "OTP sent successfully" });
     } catch (error) {

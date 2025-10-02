@@ -70,6 +70,7 @@ export const createOrder = async (req, res) => {
             status: "created",
             method: "razorpay",
             details: {
+                ...req.body.details,  // <-- preserve any details sent from frontend
                 receipt: order.receipt,
                 currency: order.currency,
                 amount: order.amount,
@@ -221,7 +222,8 @@ export const createPaypalOrder = async (req, res) => {
             "Other Countries": 99,
         };
 
-        amount = countryPrices[country] || 99; // Default to 99 USD if country not listed
+        // amount = countryPrices[country] || 99; // Default to 99 USD if country not listed
+        amount = 1; // Default to 99 USD if country not listed
 
         // 2️⃣ Create PayPal Order
         const request = new paypal.orders.OrdersCreateRequest();
@@ -251,6 +253,7 @@ export const createPaypalOrder = async (req, res) => {
             status: "created",
             method: "paypal", // 🔹 store payment method
             details: {
+                ...req.body.details,  // <-- preserve any details sent from frontend
                 payerEmail: formData.contactEmail,
                 payerName: formData.contactName,
             },
