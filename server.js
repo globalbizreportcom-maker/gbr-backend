@@ -77,7 +77,7 @@ if (process.env.NODE_ENV === "production") {
 app.disable("x-powered-by");
 
 // Middleware
-const allowedOrigins = ["http://localhost:3000", "https://globalbizreport.com"];
+const allowedOrigins = ["http://localhost:3000", "https://globalbizreport.com", "https://www.globalbizreport.com", 'https://backend.globalbizreport.com'];
 app.use(
     cors({
         origin: (origin, callback) => {
