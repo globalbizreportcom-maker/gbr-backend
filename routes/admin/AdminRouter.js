@@ -10,6 +10,10 @@ import multer from "multer";
 import streamifier from "streamifier";
 import path from 'path';
 import Contact from "../../models/Contact.js";
+import csvParser from "fast-csv";
+import { Company } from "../../models/company.js";
+import stream from "stream";
+import transporter from "../../utils/Nodemailer.js";
 
 const adminRouter = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // keep in memory
@@ -126,29 +130,140 @@ adminRouter.get("/dashboard-stats", verifyAdmin, async (req, res) => {
 });
 
 // Update report status
-adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body;
 
-    // Optional: Validate status
-    const STATUS_TABS = ["initiated", "in-progress", "completed", "delivered"];
-    if (!STATUS_TABS.includes(status)) {
-        return res.status(400).json({ success: false, message: "Invalid status" });
-    }
+async function updateReportStatus(id, status) {
+    // Validate status
+    // const STATUS_TABS = ["initiated", "in-progress", "completed", "delivered"];
+    // if (!STATUS_TABS.includes(status)) {
+    //     return { success: false, message: "Invalid status" };
+    // }
 
     try {
         const report = await ReportRequest.findById(id);
         if (!report) {
-            return res.status(404).json({ success: false, message: "Report not found" });
+            return { success: false, message: "Report not found" };
         }
+
         report.status = status;
         await report.save();
 
-        res.json({ success: true, report });
+        return { success: true, report };
     } catch (error) {
-        res.status(500).json({ success: false, message: "Server error" });
+        console.log("Error updating report status:", error);
+        return { success: false, message: "Server error" };
+    }
+}
+
+export const getReportDetailsById = async (id) => {
+    try {
+        const report = await ReportRequest.findById(id);
+
+        if (!report) return null;
+
+        const recipientName = report.requesterInfo?.name || "Valued Customer";
+        const recipientEmail = report.requesterInfo?.email;
+
+        const companyDetails = {
+            companyName: report.targetCompany?.name || "",
+            address: report.targetCompany?.address || "",
+            city: report.targetCompany?.city || "",
+            state: report.targetCompany?.state || "",
+            country: report.targetCompany?.country || "",
+            postalCode: report.targetCompany?.postalCode || "",
+            telephone: report.targetCompany?.phone || "",
+            website: report.targetCompany?.website || "",
+        };
+
+        return {
+            recipientName,
+            recipientEmail,
+            companyDetails,
+        };
+    } catch (err) {
+        console.error("Error fetching report details:", err);
+        return null;
+    }
+};
+
+const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails }) => {
+    if (!recipientEmail) return;
+
+    // Helper to conditionally render table rows
+    const renderRow = (label, value) =>
+        value ? `<tr><td style="padding: 8px; font-weight: bold;">${label}</td><td style="padding: 8px;">${value}</td></tr>` : "";
+
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; color: #333;">
+        <h2>Business Credit Report of ${companyDetails.companyName || ""}</h2>
+        <p>Dear ${recipientName || ""},</p>
+        <p>Thank you for choosing GlobalBizReport.com (GBR) and taking the time to order a freshly investigated Business Credit Report.</p>
+        <p>As requested, please find attached the freshly investigated credit report for the following company:</p>
+        <hr/>
+        <p>Company Inquiry Details – Company to Verify</p>
+        <table style="border-collapse: collapse; width: 100%; max-width: 600px;">
+          ${renderRow("COMPANY NAME", companyDetails.companyName)}
+          ${renderRow("ADDRESS", companyDetails.address)}
+          ${renderRow("CITY", companyDetails.city)}
+          ${renderRow("STATE", companyDetails.state)}
+          ${renderRow("COUNTRY", companyDetails.country)}
+          ${renderRow("TELEPHONE", companyDetails.telephone)}
+          ${renderRow("WEBSITE", companyDetails.website)}
+        </table>
+        <hr/>
+        <p>Please note that GBR Reports are 100% freshly investigated and known for their exceptional quality, depth, and accuracy.</p>
+        <p>Thank you once again for considering GBR as your trusted credit reporting partner. We look forward to supporting your ongoing credit risk assessment and due diligence requirements.</p>
+        <p>Should you have any further questions or need assistance placing an order, please feel free to contact us — we’ll be happy to assist you.</p>
+        <p>Best regards,<br/><strong>GBR</strong><br/>Team, Global Sales<br/><a href="https://www.GlobalBizReport.com">www.GlobalBizReport.com</a></p>
+        <hr/>
+        <p>About GlobalBizReport (GBR):</p>
+        <p>GlobalBizReport is one of the most trusted business services platforms, providing freshly investigated and detailed Business Credit Reports and Due Diligence Reports to Corporates, SMEs, B2B Marketplaces, Financial Institutions, Global Consulting Firms, and Market Research Companies worldwide.</p>
+        <p>Trusted by over 20,000 companies globally, GBR offers 100% freshly investigated credit reports with unmatched global reach across 220+ countries.</p>
+      </div>
+    `;
+
+    await transporter.sendMail({
+        from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
+        to: recipientEmail,
+        subject: `Business Credit Report of ${companyDetails.companyName || ""}`,
+        html: htmlContent,
+    });
+};
+
+
+adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    try {
+        // 1️⃣ Update the report status
+        const result = await updateReportStatus(id, status);
+
+        if (!result.success) {
+            return res.status(400).json(result);
+        }
+
+        if (status === "delivered") {
+            // Fetch report details (recipient email, company info, etc.)
+            const reportDetails = await getReportDetailsById(id);
+            if (reportDetails) {
+                // Example email sending function
+                await sendReportEmail({
+                    recipientName: reportDetails.recipientName,
+                    recipientEmail: reportDetails.recipientEmail,
+                    companyDetails: reportDetails.companyDetails,
+                    reportFile: reportDetails.reportFile, // optional PDF attachment
+                });
+            }
+        }
+
+        res.json(result);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: "Failed to update status or send email" });
     }
 });
+
+
 
 // Get all users
 adminRouter.get("/users", async (req, res) => {
@@ -189,13 +304,25 @@ adminRouter.post("/report-files/upload", upload.single("file"), async (req, res)
 // payments
 adminRouter.get("/payments", async (req, res) => {
     try {
-        const payments = await Payment.find().populate("user", "email name").sort({ createdAt: -1 });;
+        const payments = await Payment.find()
+            .populate({
+                path: "user",
+                select: "name email phone country company", // Requester/User info
+            })
+            .populate({
+                path: "reportRequest",
+                select: "targetCompany requesterInfo status createdAt", // Include both requesterInfo & targetCompany
+            })
+            .sort({ createdAt: -1 });
+
         res.status(200).json(payments);
     } catch (err) {
-        console.log("Error fetching payments:", err);
+        console.error("Error fetching payments:", err);
         res.status(500).json({ message: "Error fetching payments" });
     }
 });
+
+
 
 // GET all contacts, sorted by latest
 adminRouter.get("/contacts", async (req, res) => {
@@ -251,6 +378,46 @@ adminRouter.post("/contacts/thread/:email/reply", async (req, res) => {
 });
 
 
+
+async function getCompanyCountByState(state) {
+    if (!state) throw new Error("State is required");
+
+    try {
+        const count = await Company.countDocuments({ CompanyStateCode: state });
+        console.log(`Total companies in ${state}: ${count}`);
+        return count;
+    } catch (err) {
+        console.error("Error fetching company count:", err);
+        throw err;
+    }
+}
+
+// getCompanyCountByState("andhra pradesh");
+
+
+async function viewLastDocument() {
+    try {
+        // Sort by creation time descending and get the last inserted document
+        const lastDoc = await Company.findOne().sort({ createdAt: -1 });
+        console.log("Last document:", lastDoc);
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+// viewLastDocument();
+
+async function deleteAndhraPradeshCompanies() {
+    try {
+        const result = await Company.deleteMany({ CompanyStateCode: { $regex: /^Andhra Pradesh$/i } });
+        console.log(`Deleted ${result.deletedCount} companies from Andhra Pradesh`);
+    } catch (err) {
+        console.error("Error deleting companies:", err);
+    }
+}
+
+// Call the function
+// deleteAndhraPradeshCompanies();
 
 
 // Logout

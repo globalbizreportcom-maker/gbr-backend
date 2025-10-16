@@ -15,18 +15,27 @@
     "@paypal/checkout-server-sdk": "^1.0.3",
     "axios": "^1.11.0",
     "bcryptjs": "^3.0.2",
+    "better-sqlite3": "^12.4.1",
     "cloudinary": "^2.7.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
     "dotenv": "^17.1.0",
+    "exceljs": "^4.4.0",
     "express": "^5.1.0",
+    "fast-csv": "^5.0.5",
+    "fs": "^0.0.1-security",
+    "fuse.js": "^7.1.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "meilisearch": "^0.53.0",
     "mongoose": "^8.16.2",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.6",
     "nodemon": "^3.1.10",
     "razorpay": "^2.9.6",
-    "streamifier": "^0.1.1"
+    "stream": "^0.0.3",
+    "streamifier": "^0.1.1",
+    "xlsx": "^0.18.5"
   }
 }

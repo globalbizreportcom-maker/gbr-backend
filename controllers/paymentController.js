@@ -4,6 +4,8 @@ import crypto from "crypto";
 import Payment from "../models/Payment.js";
 import ReportRequest from "../models/ReportRequest.js";
 import paypal from "@paypal/checkout-server-sdk";
+import transporter from "../utils/Nodemailer.js";
+import User from "../models/User.js";
 
 // Move keys to .env in production
 // const razorpay = new Razorpay({
@@ -11,10 +13,118 @@ import paypal from "@paypal/checkout-server-sdk";
 //     key_secret: process.env.RAZORPAY_KEY_SECRET || 'lCg8ZeIBhKQ93v9CDmZ4QrS2',
 // });
 
+
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID || 'rzp_live_ROY0D3SgPD1pdG',
     key_secret: process.env.RAZORPAY_KEY_SECRET || '2wUhDOwdqHHTkTGLCNZobfvr',
 });
+
+async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportRequest }) {
+    // Destructure requester info
+    const {
+        name,
+        email,
+        phone,
+        optionalEmail,
+        company: requesterCompany,
+        website: requesterWebsite,
+        country: requesterCountry
+    } = reportRequest?.requesterInfo || {};
+
+    // Destructure target company info
+    const {
+        name: targetCompanyName,
+        address: targetCompanyAddress,
+        country: targetCompanyCountry,
+        website: targetCompanyWebsite
+    } = reportRequest?.targetCompany || {};
+
+    try {
+
+        //  Email options
+        const mailOptions = {
+            from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
+            to: recipientEmail,
+            subject: "Your Credit Report Order is being Processed – GlobalBizReport.com",
+            html: `
+        <p>Dear ${name || 'User'},</p>
+        <p>Thank you for your order with GlobalBizReport.com (GBR). We appreciate your trust in our services.</p>
+
+        <p>We are pleased to confirm receipt of your request for a freshly investigated Business Credit Report. Our investigation team has initiated the process, and the completed report will be emailed to you at the earliest.</p>
+
+        <p>Kindly review the following inquiry details and confirm if the information is correct:</p>
+        <hr />
+        <p><strong>Company Inquiry Details – Company to Verify</strong><br/>
+        ${targetCompanyName || '(Company Name)'}<br/>
+        ${targetCompanyAddress || '(Address)'}<br/>
+        ${targetCompanyCountry || '(Country)'}<br/>
+        ${targetCompanyWebsite || '(Website)'}
+        </p>
+        <hr />
+
+        <p>At GlobalBizReport, we are committed to delivering 100% freshly investigated credit reports known for their exceptional quality, in-depth coverage, and accuracy. Our standard delivery timeframe for international reports is now just 1-3 business days.</p>
+
+        <p>Thank you once again for choosing GBR Reports as your trusted credit reporting partner. We look forward to supporting your ongoing credit risk assessment and business due diligence needs.</p>
+
+        <p>If you have any questions or need support with additional reports, please feel free to contact us — we’ll be happy to assist you.</p>
+
+        <p>Best Regards,</p>
+        <br/>
+        Team - GlobalBizReport<br/>
+        <a href="https://www.GlobalBizReport.com">www.GlobalBizReport.com</a></p>
+
+        <hr />
+        <p><strong>About GlobalBizReport (GBR):</strong><br/>
+        GlobalBizReport is one of the world’s most trusted platforms for freshly investigated Business Credit Report and Due Diligence Reports, serving Corporates, SMEs, B2B Marketplaces, Financial Institutions, and Consulting Organisations in 220+ countries. Trusted by 20,000+ companies globally, GBR delivers fast, accurate, and in-depth business insights on companies worldwide.
+        </p>
+      `,
+        };
+
+        // Send email
+        const info = await transporter.sendMail(mailOptions);
+
+    } catch (err) {
+        console.error("Error sending email:", err);
+    }
+}
+
+async function sendPaymentCancelledEmail(recipientEmail, recipientName, orderId) {
+    try {
+        const mailOptions = {
+            from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
+            to: recipientEmail,
+            subject: "Complete Your Order – GlobalBizReport.com",
+            html: `
+                <p>Dear ${recipientName || 'User'},</p>
+
+                <p>Thank you for your interest to inquire for a Freshly Investigated Credit Report from www.GlobalBizReport.com (GBR). We want to assure you that you made the right choice. GBR is one of the most reliable business services platforms providing Freshly Investigated Business Credit Reports to Corporates, SMEs, B2B Marketplaces, Financial Institutes, Global Consultancy & Market Research companies worldwide.</p>
+
+                <p>We noticed that you couldn't complete the transaction due to some technical problem. We are sorry for the inconvenience. But no worries!</p>
+
+                <p>In order to save your time, we give below a link to continue from where you left.</p>
+
+                <p><a href="https://www.GlobalBizReport.com/order-business-credit-report" style="display:inline-block;padding:10px 20px;background:#FF6600;color:#fff;text-decoration:none;border-radius:5px;">Click here to Complete Your Order</a></p>
+
+                <p>GBR offers its service in over 220+ countries and GBR Credit Reports gives you full picture of company's reliability, registration data, financial health, credit worthiness check, credit rating score, Directors Info, details on any Negative information and much more.</p>
+
+                <p>Once again thank you for your interest in considering GlobalBizReport as your Credit Reporting Partner. We look forward to receiving your order and to serving you for your future credit reporting needs.</p>
+
+                <p>For any queries, please feel free to contact us at <a href="mailto:support@globalbizreport.com">support@globalbizreport.com</a></p>
+
+                <p>Regards,<br/>
+                Team - GlobalBizReport</p>
+
+                <p><em>Click here in case you want to view a sample report. Please note that the contents of the report like financial statements etc. are subject to availability depending on the local government policies and corporate information disclosure of the subject/country.</em></p>
+            `,
+        };
+
+        await transporter.sendMail(mailOptions);
+    } catch (err) {
+        console.error("Error sending payment cancelled email:", err);
+    }
+}
+
+
 
 // 🔹 Create Razorpay Order & ReportRequest
 export const createOrder = async (req, res) => {
@@ -53,8 +163,8 @@ export const createOrder = async (req, res) => {
 
         // 2️⃣ Create Razorpay order
         const options = {
-            amount: 1 * 100, // paise
-            // amount: 4720 * 100, // paise
+            // amount: 1 * 100, // paise
+            amount: 4720 * 100, // paise
             currency,
             receipt: `receipt_${Date.now()}`,
         };
@@ -105,7 +215,6 @@ export const verifyPayment = async (req, res) => {
 
         // 2️⃣ Fetch full Razorpay payment details
         const razorpayPayment = await razorpay.payments.fetch(razorpay_payment_id);
-        console.log("✅ Razorpay Payment Details:", razorpayPayment);
 
         // 3️⃣ Map Razorpay fields to Payment.details
         const paymentDetails = {
@@ -145,6 +254,22 @@ export const verifyPayment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Payment record not found" });
         }
 
+        // 5️⃣ Fetch the related report request using reportRequest ID
+        const reportRequest = await ReportRequest.findById(payment.reportRequest);
+        if (!reportRequest) {
+            console.warn("Report request not found for payment:", payment._id);
+        }
+
+        // 6️⃣ Send email if payerEmail exists, passing paymentDetails + reportRequest
+        if (paymentDetails.payerEmail) {
+            sendCreditReportEmail(paymentDetails.payerEmail, {
+                paymentDetails,
+                reportRequest,
+            })
+                .then(() => console.log("Credit report email sent successfully"))
+                .catch((err) => console.log("Failed to send credit report email:", err));
+        }
+
         res.json({ success: true, message: "Payment verified successfully", payment });
     } catch (error) {
         console.error("❌ Razorpay payment verification error:", error);
@@ -159,16 +284,16 @@ const Environment = paypal.core.SandboxEnvironment;
 //     new Environment("AXE0e0T-WVhYAxm7bKHdfiufchoL27auBeQ5PgJQ8UzmExYoesadzdcBxet-A3l2l1_m8V3CLLijAll9",
 //         "EIb6PTnkVXKOdw4bH8i7nbu1X5H-FGIKzdMgJ8VLDwKiXe6oaxygr4IKW5NOib0LeuRVMF0e8kBy7LWi")
 // );
+
 const client = new paypal.core.PayPalHttpClient(
-    new Environment("AY6fBteBTgpncQezbVjnZvrR4AP1s5g73oqCxlIkvep9KvnxKSoU7XFqOK6YblkgY0INBjZuUpQtAUlP",
-        "EAoBmiFDQBeHUtxIZzZiSG6SMhSRavBxNZHeVliSVkOmNqOejy63LF4Gt5MQ0ScapDGWLhoYO2ehvRIU")
+    new Environment("AbYmo3fDOLo929hTcfuSF5OAsTXMmvUiLalzVeXkqtWNVNlbaBP6erqJfy4bw1zP0MgBRoKhWUJ4LA6-",
+        "ELYIqvUKnIaLiV1hG4I7Ty7xk4Mkw1FA2rkWCZzH9FqejbyfVeZTjn_fKsPeZZNGtosYYx2D5nLadvrU")
 );
 
 // 🔹 Create PayPal Order
 export const createPaypalOrder = async (req, res) => {
     try {
         let { amount, userId, formData, currency = "USD" } = req.body;
-        console.log("UserId:", userId);
 
         if (!amount || !formData) {
             return res.status(400).json({ error: "Missing required parameters" });
@@ -222,8 +347,8 @@ export const createPaypalOrder = async (req, res) => {
             "Other Countries": 99,
         };
 
-        // amount = countryPrices[country] || 99; // Default to 99 USD if country not listed
-        amount = 1; // Default to 99 USD if country not listed
+        amount = countryPrices[country] || 99; // Default to 99 USD if country not listed
+        // amount = 1; // Default to 99 USD if country not listed
 
         // 2️⃣ Create PayPal Order
         const request = new paypal.orders.OrdersCreateRequest();
@@ -241,7 +366,6 @@ export const createPaypalOrder = async (req, res) => {
         });
 
         const order = await client.execute(request);
-        console.log("PayPal Order:", order);
 
         // 3️⃣ Store Payment
         await Payment.create({
@@ -259,7 +383,7 @@ export const createPaypalOrder = async (req, res) => {
             },
         });
 
-        res.json({ orderId: order.result.id, clientId: 'AY6fBteBTgpncQezbVjnZvrR4AP1s5g73oqCxlIkvep9KvnxKSoU7XFqOK6YblkgY0INBjZuUpQtAUlP' });
+        res.json({ orderId: order.result.id, clientId: 'AbYmo3fDOLo929hTcfuSF5OAsTXMmvUiLalzVeXkqtWNVNlbaBP6erqJfy4bw1zP0MgBRoKhWUJ4LA6-' });
     } catch (error) {
         res.status(500).json({ error: "Failed to create PayPal order" });
     }
@@ -328,9 +452,68 @@ export const capturePaypalPayment = async (req, res) => {
             return res.status(404).json({ success: false, message: "Payment record not found" });
         }
 
+        // 5️⃣ Fetch the related report request using reportRequest ID
+        const reportRequest = await ReportRequest.findById(payment.reportRequest);
+        if (!reportRequest) {
+            console.log("Report request not found for payment:", payment._id);
+        }
+
+        // 6️⃣ Send email if payerEmail exists, passing paymentDetails + reportRequest
+        if (paymentDetails.payerEmail) {
+            sendCreditReportEmail(paymentDetails.payerEmail, {
+                paymentDetails,
+                reportRequest,
+            })
+                .then(() => console.log("Credit report email sent successfully"))
+                .catch((err) => console.error("Failed to send credit report email:", err));
+        }
+
         res.json({ success: true, message: "Payment captured", payment });
     } catch (error) {
         console.error("❌ PayPal capture error:", error);
         res.status(500).json({ error: "Failed to capture PayPal payment" });
+    }
+};
+
+
+export const handlePaymentCancelled = async (req, res) => {
+    try {
+        const { userId, orderId, data } = req.body;
+        if (!orderId) {
+            return res.status(400).json({ success: false, message: "Missing orderId" });
+        }
+
+        // Mark payment as cancelled
+        const payment = await Payment.findOneAndUpdate(
+            { orderId },
+            { status: 'cancelled', cancelledAt: new Date() },
+            { new: true }
+        );
+        console.log(payment);
+        if (!payment) {
+            return res.status(404).json({ success: false, message: "Payment record not found" });
+        }
+
+        // Fetch related report request
+        const reportRequest = await ReportRequest.findById(payment.reportRequest);
+
+        // 🔹 Fetch user email using the 'user' field in Payment
+        const user = await User.findById(payment.user).select("email name");
+
+        if (!user?.email) {
+            console.warn("⚠️ No user email found for cancellation:", payment.user);
+        } else {
+            // 🔹 Send cancellation email
+            await sendPaymentCancelledEmail(user.email, user.name, {
+                reportRequest,
+                orderId,
+                userName: user.name || "User",
+            });
+        }
+
+        res.json({ success: true, message: 'Cancellation processed' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Failed to process cancellation' });
     }
 };
