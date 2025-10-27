@@ -24,6 +24,7 @@ import { loadAllJsonsToSQLite } from './utils/loadAllJsonsToSQLite.js';
 
 import Database from 'better-sqlite3';
 import { Buffer } from 'buffer';
+import { log } from 'console';
 
 const db = new Database("./sqldb/companies.db");
 
@@ -133,7 +134,7 @@ app.post("/api/users/check-or-create", checkOrCreateUser);
 
 // base api 
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully" });
+    res.json({ message: "Backend connected successfully..." });
 });
 
 app.get("/cors/test", (req, res) => {
@@ -209,38 +210,6 @@ async function fetchAllData() {
 }
 
 
-// fetchAllData()
-
-// app.get("/api/company-details", (req, res) => {
-//     const { query = "", state = "", cin = "" } = req.query;
-
-//     try {
-//         let sql = `SELECT * FROM companies WHERE 1=1`;
-//         const params = [];
-
-//         if (query) {
-//             sql += ` AND CompanyName LIKE ?`;
-//             params.push(`%${query}%`);
-//         }
-//         if (state) {
-//             sql += ` AND CompanyStateCode LIKE ?`;
-//             params.push(`%${state}%`);
-//         }
-//         if (cin) {
-//             sql += ` AND CIN = ?`;
-//             params.push(cin);
-//         }
-
-//         const rows = db.prepare(sql).all(params);
-//         console.log(rows);
-//         res.json(rows);
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ error: "Database error" });
-//     }
-// });
-
-
 app.get("/api/company-details", (req, res) => {
     const { query = "", state = "", cin = "" } = req.query;
 
@@ -295,9 +264,6 @@ app.get("/api/company-details", (req, res) => {
         res.status(500).json({ error: "Database error" });
     }
 });
-
-
-
 
 app.get("/api/companies", (req, res) => {
     try {
@@ -473,15 +439,13 @@ app.get("/companies-directory", (req, res) => {
             ${whereSQL}
             LIMIT @perPage OFFSET @offset
         `).all({ ...params, perPage, offset });
-
+        console.log(totalRows, totalPages, page, perPage, rows);
         res.json({ totalRows, totalPages, page, perPage, rows });
     } catch (err) {
-        console.error("❌ Server error:", err);
+        console.log("❌ Server error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
-
-
 
 const createAdminManually = async () => {
     try {
@@ -590,15 +554,6 @@ function fetchCompaniesStartingWithInState(keyword = "sun", state = "", limit = 
 // Example usage: first 10 companies starting with "sun" in Tamil Nadu
 // const sunCompaniesTN = fetchCompaniesStartingWithInState("sun", "", 2);
 // console.log(sunCompaniesTN);
-
-
-
-
-
-
-
-
-
 
 
 
