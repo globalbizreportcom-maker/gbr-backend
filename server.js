@@ -23,6 +23,7 @@ import { loadAllJsonsToSQLite } from './utils/loadAllJsonsToSQLite.js';
 
 
 import Database from 'better-sqlite3';
+import { Buffer } from 'buffer';
 
 const db = new Database("./sqldb/companies.db");
 
@@ -89,7 +90,7 @@ app.disable("x-powered-by");
 
 // Middleware
 const allowedOrigins = [
-    // "http://localhost:3000", --dev
+    "http://localhost:3000",// --dev
     "https://globalbizreport.com",
     "https://www.globalbizreport.com",
     'https://backend.globalbizreport.com'
@@ -125,6 +126,7 @@ app.post("/api/payment/create-paypal-order", createPaypalOrder);
 app.post("/api/payment/capture-paypal", capturePaypalPayment);
 // failed orders
 app.post("/api/payment/cancellation", handlePaymentCancelled);
+
 
 
 app.post("/api/users/check-or-create", checkOrCreateUser);
@@ -225,7 +227,7 @@ async function fetchAllData() {
 //             params.push(cin);
 //         }
 
-//         const rows = db.prepare(sql).all(params); // ✅ synchronous
+//         const rows = db.prepare(sql).all(params);
 //         console.log(rows);
 //         res.json(rows);
 //     } catch (err) {
@@ -385,7 +387,130 @@ app.get("/api/companies", (req, res) => {
     }
 });
 
+app.get("/api/companies-directory", (req, res) => {
+    try {
+        let {
+            company = "",
+            country = "",
+            state = "",
+            industry = "",
+            companyType = "",
+            status = "",
+            alphabet = "",
+            page = 1,
+            perPage = 20
+        } = req.query;
 
+        page = Number(page) || 1;
+        perPage = Number(perPage) || 20;
+        const offset = (page - 1) * perPage;
+
+        company = (company || "").trim();
+        country = (country || "").trim().toLowerCase();
+        state = (state || "").trim().toLowerCase();
+        industry = (industry || "").trim();
+        companyType = (companyType || "").trim();
+        status = (status || "").trim();
+        alphabet = (alphabet || "").trim();
+
+        const whereClauses = [];
+        const params = {};
+
+        if (company) {
+            whereClauses.push("CompanyName LIKE @company");
+            params.company = `%${company}%`;
+        }
+
+        if (alphabet) {
+            whereClauses.push("CompanyName LIKE @alphabet");
+            params.alphabet = `${alphabet}%`;
+        }
+
+        if (country) {
+            whereClauses.push("LOWER(TRIM(Country)) = @country");
+            params.country = country;
+        }
+
+        if (state) {
+            whereClauses.push("LOWER(TRIM(CompanyStateCode)) = @state");
+            params.state = state;
+        }
+
+        if (industry) {
+            // Correct column name (change "Industry" if your DB uses another name)
+            whereClauses.push("CompanyIndustrialClassification = @industry");
+            params.industry = industry;
+        }
+
+        if (companyType) {
+            whereClauses.push("CompanyClass = @companyType");
+            params.companyType = companyType;
+        }
+
+        if (status) {
+            whereClauses.push("CompanyStatus = @status");
+            params.status = status;
+        }
+
+        const whereSQL = whereClauses.length ? "WHERE " + whereClauses.join(" AND ") : "";
+
+        const totalRows = db.prepare(`
+            SELECT COUNT(*) AS total
+            FROM companies
+            ${whereSQL}
+        `).get(params).total;
+
+        const totalPages = Math.ceil(totalRows / perPage);
+
+        const rows = db.prepare(`
+            SELECT *
+            FROM companies
+            ${whereSQL}
+            LIMIT @perPage OFFSET @offset
+        `).all({ ...params, perPage, offset });
+
+        res.json({ totalRows, totalPages, page, perPage, rows });
+    } catch (err) {
+        console.error("❌ Server error:", err);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+
+
+const createAdminManually = async () => {
+    try {
+
+
+        const userName = "gbr002";
+        const password = "gbrvb@3112";
+        // const userName = "gbr003";
+        // const password = "gbr@rishikesh";
+        const role = "superadmin";
+
+        // Check if admin already exists
+        const existing = await Admin.findOne({ userName });
+        if (existing) {
+            console.log(" Admin already exists:", userName);
+            return;
+        }
+
+        // Create admin
+        const newAdmin = new Admin({ userName, password, role });
+        await newAdmin.save();
+
+        console.log("✅ Admin created successfully!");
+        console.log({
+            userName: newAdmin.userName,
+            role: newAdmin.role,
+        });
+    } catch (err) {
+        console.log("❌ Error creating admin:", err.message);
+    }
+};
+
+// ✅ Call the function directly
+// createAdminManually();
 
 
 
@@ -471,6 +596,171 @@ function fetchCompaniesStartingWithInState(keyword = "sun", state = "", limit = 
 
 
 
+
+const clientId = "AbYmo3fDOLo929hTcfuSF5OAsTXMmvUiLalzVeXkqtWNVNlbaBP6erqJfy4bw1zP0MgBRoKhWUJ4LA6-";
+const clientSecret = "ELYIqvUKnIaLiV1hG4I7Ty7xk4Mkw1FA2rkWCZzH9FqejbyfVeZTjn_fKsPeZZNGtosYYx2D5nLadvrU";
+
+async function testPaypal() {
+    try {
+        console.log("🟢 Getting access token...");
+        const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+        const tokenRes = await fetch("https://api.paypal.com/v1/oauth2/token", {
+            method: "POST",
+            headers: {
+                "Authorization": `Basic ${auth}`,
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: "grant_type=client_credentials"
+        });
+
+        const tokenData = await tokenRes.json();
+        console.log("🔹 Token response:", tokenData);
+
+        if (!tokenData.access_token) {
+            console.error("❌ Failed to get token:", tokenData);
+            return;
+        }
+
+        console.log("🟢 Creating test order...");
+        const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${tokenData.access_token}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                intent: "CAPTURE",
+                purchase_units: [{ amount: { currency_code: "USD", value: "1.00" } }]
+            })
+        });
+
+        const orderData = await orderRes.json();
+        console.log("🔹 Order response:", orderData);
+
+        if (orderData.name === "BUSINESS_ACCOUNT_RESTRICTED") {
+            console.log("❌ Your PayPal India business account cannot use live checkout (RBI restriction).");
+        } else {
+            console.log("✅ Checkout API works:", orderData);
+        }
+
+    } catch (error) {
+        console.log("💥 Error:", error);
+    }
+}
+
+
+async function createAndCaptureOrder() {
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+    // 1️⃣ Get access token
+    const tokenRes = await fetch("https://api.paypal.com/v1/oauth2/token", {
+        method: "POST",
+        headers: {
+            "Authorization": `Basic ${auth}`,
+            "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: "grant_type=client_credentials"
+    });
+    const tokenData = await tokenRes.json();
+    const accessToken = tokenData.access_token;
+
+    // 2️⃣ Create order
+    const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            intent: "CAPTURE",
+            purchase_units: [{ amount: { currency_code: "USD", value: "1.00" } }]
+        })
+    });
+    const orderData = await orderRes.json();
+    console.log("Order created:", orderData);
+
+    // 3️⃣ Capture payment immediately
+    const captureRes = await fetch(`https://api.paypal.com/v2/checkout/orders/${orderData.id}/capture`, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json"
+        }
+    });
+    const captureData = await captureRes.json();
+    console.log("Payment captured:", captureData);
+}
+
+// 1️⃣ Get access token
+async function getAccessToken() {
+    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+    const res = await fetch("https://api.paypal.com/v1/oauth2/token", {
+        method: "POST",
+        headers: {
+            "Authorization": `Basic ${auth}`,
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: "grant_type=client_credentials",
+    });
+
+    const data = await res.json();
+    return data.access_token;
+}
+
+// 2️⃣ Create order
+app.post("/create-order", async (req, res) => {
+    try {
+        const { amount } = req.body;
+        const accessToken = await getAccessToken();
+
+        const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                intent: "CAPTURE",
+                purchase_units: [{ amount: { currency_code: "USD", value: amount } }],
+            }),
+        });
+
+        const orderData = await orderRes.json();
+        res.json(orderData);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Something went wrong" });
+    }
+});
+
+// 3️⃣ Capture payment
+app.post("/capture-order", async (req, res) => {
+    try {
+        const { orderId } = req.body;
+        const accessToken = await getAccessToken();
+
+        const captureRes = await fetch(`https://api.paypal.com/v2/checkout/orders/${orderId}/capture`, {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+            },
+        });
+
+        const captureData = await captureRes.json();
+        res.json(captureData);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: "Something went wrong" });
+    }
+});
+
+// createAndCaptureOrder();
+
+
+// testPaypal();
 
 
 

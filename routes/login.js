@@ -33,7 +33,7 @@ loginRouter.post("/send-otp", async (req, res) => {
 
         res.json({ success: true, message: "OTP sent successfully" });
     } catch (error) {
-        console.error("❌ OTP Send Error:", error);
+        console.log("❌ OTP Send Error:", error);
         res.status(500).json({ success: false, message: "Failed to send OTP" });
     }
 });
