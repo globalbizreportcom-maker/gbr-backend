@@ -136,7 +136,7 @@ app.get("/", (req, res) => {
     res.json({ message: "Backend connected successfully" });
 });
 
-app.get("/api/test", (req, res) => {
+app.get("/cors/test", (req, res) => {
     res.json({ message: "Backend connected" });
 });
 
@@ -392,7 +392,7 @@ app.get("/api/companies", (req, res) => {
     }
 });
 
-app.get("/api/companies-directory", (req, res) => {
+app.get("/companies-directory", (req, res) => {
     try {
         let {
             company = "",
