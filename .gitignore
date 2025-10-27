@@ -1,2 +1,10 @@
 # Ignore your SQL database folder
+data/
+
 sqldb/
+*.db
+*.db-shm
+*.db-wal
+
+# Node modules
+node_modules/
