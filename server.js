@@ -136,6 +136,10 @@ app.get("/", (req, res) => {
     res.json({ message: "Backend connected successfully" });
 });
 
+app.get("/api/test", (req, res) => {
+    res.json({ message: "Backend connected" });
+});
+
 // Folder to store uploaded files temporarily
 const upload = multer({ dest: "uploads/" });
 
@@ -291,6 +295,7 @@ app.get("/api/company-details", (req, res) => {
         res.status(500).json({ error: "Database error" });
     }
 });
+
 
 
 

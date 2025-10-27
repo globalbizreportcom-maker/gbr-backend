@@ -7,4 +7,4 @@ sqldb/
 *.db-wal
 
 # Node modules
-node_modules/
+# node_modules/
