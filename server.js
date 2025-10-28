@@ -329,27 +329,27 @@ app.get("/api/companies", (req, res) => {
         if (useFTS) {
             const cleanFTSQuery = (str) =>
                 str
-                    .replace(/[^\w\s]/g, " ") // remove all non-word chars (. , @ etc)
+                    .replace(/[^\w\s]/g, " ") // remove all non-word chars
                     .replace(/\s+/g, " ")     // collapse spaces
                     .trim()
                     .toLowerCase();
 
             const cleanedCompany = cleanFTSQuery(company);
 
-            // Prevent empty query from breaking MATCH
             if (!cleanedCompany) {
                 return res.json({ totalRows: 0, totalPages: 0, page, perPage, rows: [] });
             }
 
             const ftsKeyword = cleanedCompany
                 .split(/\s+/)
-                .map(k => `${k}*`) // wildcard for each term
+                .map(k => `${k}*`)
                 .join(" ");
 
             const ftsParams = { keyword: ftsKeyword };
             if (hasState) ftsParams.state = normalizedState;
 
-            const whereParts = ["fts.CompanyName MATCH @keyword"];
+            // ✅ FIX: Removed fts. prefix before column name
+            const whereParts = ["CompanyName MATCH @keyword"];
             if (hasState) whereParts.push("LOWER(TRIM(c.CompanyStateCode)) = @state");
             const whereClause = whereParts.join(" AND ");
 
@@ -390,6 +390,7 @@ app.get("/api/companies", (req, res) => {
                 `).all({ ...likeParams, perPage, offset });
             }
         }
+
 
         else {
             // LIKE search for short queries

@@ -35,7 +35,7 @@ jobs:
 
             # Install dependencies
             rm -rf node_modules package-lock.json
-            npm install
+            npm install --legacy-peer-deps
 
             # Restart backend with PM2
             pm2 describe gbr-backend > /dev/null 2>&1
