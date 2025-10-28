@@ -142,71 +142,6 @@ app.get("/cors/test", (req, res) => {
 const upload = multer({ dest: "uploads/" });
 
 
-// create admin users
-const createSuperAdmin = async () => {
-    try {
-        const existing = await Admin.findOne({ userName: "gbr001" });
-        if (existing) {
-            console.log("Superadmin already exists");
-            process.exit(0);
-        }
-
-        const admin = new Admin({
-            userName: "gbr001",
-            password: "gbr@123",
-            role: "superadmin",
-        });
-
-        await admin.save();
-        console.log("Superadmin created successfully");
-        process.exit(0);
-    } catch (err) {
-        console.error("Error creating superadmin:", err);
-        process.exit(1);
-    }
-};
-
-async function fetchAllData() {
-    const apiKey = "579b464db66ec23bdd000001fb32a8e4a50f47956e1cb75ccdabfa2e";
-    const resourceId = "4dbe5667-7b6b-41d7-82af-211562424d9a"; // dataset id
-    const limit = 100;
-    let offset = 0;
-    let totalFetched = 0;
-
-    while (true) {
-        try {
-            const res = await axios.get(
-                `https://api.data.gov.in/resource/${resourceId}`,
-                {
-                    params: {
-                        "api-key": apiKey,
-                        format: "json",
-                        limit,
-                        offset,
-                    },
-                }
-            );
-
-            const records = res.data.records || [];
-            if (records.length === 0) break; // stop when no data left
-
-            console.log(`Fetched ${records.length} records at offset ${offset}`);
-
-            // Insert into MongoDB
-            await Company.insertMany(records, { ordered: false });
-
-            totalFetched += records.length;
-            offset += limit;
-        } catch (err) {
-            console.error("❌ Error fetching data:", err.message);
-            break;
-        }
-    }
-
-    console.log(`✅ Finished. Total records fetched: ${totalFetched}`);
-}
-
-
 app.get("/api/company-details", (req, res) => {
     const { query = "", state = "", cin = "" } = req.query;
 
@@ -327,10 +262,11 @@ app.get("/api/companies", (req, res) => {
 
         // } 
         if (useFTS) {
+            // ✅ 1. Clean up the query safely
             const cleanFTSQuery = (str) =>
                 str
-                    .replace(/[^\w\s]/g, " ") // remove all non-word chars
-                    .replace(/\s+/g, " ")     // collapse spaces
+                    .replace(/[^\w\s]/g, " ") // remove punctuation
+                    .replace(/\s+/g, " ")     // collapse multiple spaces
                     .trim()
                     .toLowerCase();
 
@@ -340,6 +276,7 @@ app.get("/api/companies", (req, res) => {
                 return res.json({ totalRows: 0, totalPages: 0, page, perPage, rows: [] });
             }
 
+            // ✅ 2. Build FTS keyword using wildcards (*)
             const ftsKeyword = cleanedCompany
                 .split(/\s+/)
                 .map(k => `${k}*`)
@@ -348,49 +285,48 @@ app.get("/api/companies", (req, res) => {
             const ftsParams = { keyword: ftsKeyword };
             if (hasState) ftsParams.state = normalizedState;
 
-            // ✅ FIX: Removed fts. prefix before column name
-            const whereParts = ["CompanyName MATCH @keyword"];
+            // ✅ 3. Build WHERE clause properly (fts.CompanyName MATCH ...)
+            const whereParts = ["fts.CompanyName MATCH @keyword"];
             if (hasState) whereParts.push("LOWER(TRIM(c.CompanyStateCode)) = @state");
             const whereClause = whereParts.join(" AND ");
 
-            // --- FTS Query ---
+            // ✅ 4. Perform FTS query first
             totalRows = db.prepare(`
-              SELECT COUNT(*) AS total
-              FROM companies c
-              JOIN companies_fts fts ON c.rowid = fts.rowid
-              WHERE ${whereClause}
+                SELECT COUNT(*) AS total
+                FROM companies c
+                JOIN companies_fts fts ON c.rowid = fts.rowid
+                WHERE ${whereClause}
             `).get(ftsParams).total;
 
             rows = db.prepare(`
-              SELECT c.*
-              FROM companies c
-              JOIN companies_fts fts ON c.rowid = fts.rowid
-              WHERE ${whereClause}
-              LIMIT @perPage OFFSET @offset
+                SELECT c.*
+                FROM companies c
+                JOIN companies_fts fts ON c.rowid = fts.rowid
+                WHERE ${whereClause}
+                LIMIT @perPage OFFSET @offset
             `).all({ ...ftsParams, perPage, offset });
 
-            // --- Fallback to LIKE ---
+            // ✅ 5. If no results, gracefully fallback to LIKE
             if (rows.length === 0) {
                 const likeParams = { keyword: `${company}%` };
                 if (hasState) likeParams.state = normalizedState;
 
                 totalRows = db.prepare(`
-                  SELECT COUNT(*) AS total
-                  FROM companies
-                  WHERE CompanyName LIKE @keyword
-                  ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
+                    SELECT COUNT(*) AS total
+                    FROM companies
+                    WHERE CompanyName LIKE @keyword
+                    ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
                 `).get(likeParams).total;
 
                 rows = db.prepare(`
-                  SELECT *
-                  FROM companies
-                  WHERE CompanyName LIKE @keyword
-                  ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
-                  LIMIT @perPage OFFSET @offset
+                    SELECT *
+                    FROM companies
+                    WHERE CompanyName LIKE @keyword
+                    ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
+                    LIMIT @perPage OFFSET @offset
                 `).all({ ...likeParams, perPage, offset });
             }
         }
-
 
         else {
             // LIKE search for short queries
@@ -546,174 +482,6 @@ const createAdminManually = async () => {
 // createAdminManually();
 
 
-
-function searchCompanyFTS(query, state = "") {
-    if (!query) return [];
-
-    // Clean query
-    const cleanedQuery = query
-        .toLowerCase()
-        .replace(/[^\w\s]/g, " ") // remove special chars
-        .trim();
-
-    // Wrap with % for partial match
-    const keyword = `%${cleanedQuery}%`;
-
-    let sql = `SELECT * FROM companies_fts WHERE LOWER(CompanyName) LIKE ?`;
-    const params = [keyword];
-
-    if (state) {
-        sql += " AND LOWER(CompanyStateCode) = ?";
-        params.push(state.toLowerCase());
-    }
-
-    const rows = db.prepare(sql).all(params);
-    return rows;
-}
-
-// ---------------- Example usage ----------------
-// const results = searchCompanyFTS("sun", "assam");
-// console.log("Results:", results);
-
-
-
-
-
-
-
-function getCounts(dbPath = "./sqldb/companies.db") {
-    const db = new Database(dbPath, { readonly: true });
-
-    const totalCompanies = db.prepare(`SELECT COUNT(*) AS count FROM companies`).get().count;
-    const totalCompaniesFTS = db.prepare(`SELECT COUNT(*) AS count FROM companies_fts`).get().count;
-
-    db.close();
-    return { totalCompanies, totalCompaniesFTS };
-}
-
-// const counts = getCounts();
-// console.log(counts);
-
-function fetchCompaniesStartingWithInState(keyword = "sun", state = "", limit = 10, dbPath = "./sqldb/companies.db") {
-    const db = new Database(dbPath, { readonly: true });
-
-    let query = `SELECT * FROM companies WHERE CompanyName LIKE @keyword`;
-    const params = { keyword: `${keyword}%`, limit };
-
-    if (state) {
-        // Just lowercase and trim, no space removal
-        query += ` AND LOWER(TRIM(CompanyStateCode)) = @state`;
-        params.state = state.trim().toLowerCase();
-    }
-
-    query += ` LIMIT @limit`;
-
-    const rows = db.prepare(query).all(params);
-    db.close();
-    return rows;
-}
-
-// Example usage: first 10 companies starting with "sun" in Tamil Nadu
-// const sunCompaniesTN = fetchCompaniesStartingWithInState("sun", "", 2);
-// console.log(sunCompaniesTN);
-
-
-
-const clientId = "AbYmo3fDOLo929hTcfuSF5OAsTXMmvUiLalzVeXkqtWNVNlbaBP6erqJfy4bw1zP0MgBRoKhWUJ4LA6-";
-const clientSecret = "ELYIqvUKnIaLiV1hG4I7Ty7xk4Mkw1FA2rkWCZzH9FqejbyfVeZTjn_fKsPeZZNGtosYYx2D5nLadvrU";
-
-async function testPaypal() {
-    try {
-        console.log("🟢 Getting access token...");
-        const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-        const tokenRes = await fetch("https://api.paypal.com/v1/oauth2/token", {
-            method: "POST",
-            headers: {
-                "Authorization": `Basic ${auth}`,
-                "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body: "grant_type=client_credentials"
-        });
-
-        const tokenData = await tokenRes.json();
-        console.log("🔹 Token response:", tokenData);
-
-        if (!tokenData.access_token) {
-            console.error("❌ Failed to get token:", tokenData);
-            return;
-        }
-
-        console.log("🟢 Creating test order...");
-        const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${tokenData.access_token}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                intent: "CAPTURE",
-                purchase_units: [{ amount: { currency_code: "USD", value: "1.00" } }]
-            })
-        });
-
-        const orderData = await orderRes.json();
-        console.log("🔹 Order response:", orderData);
-
-        if (orderData.name === "BUSINESS_ACCOUNT_RESTRICTED") {
-            console.log("❌ Your PayPal India business account cannot use live checkout (RBI restriction).");
-        } else {
-            console.log("✅ Checkout API works:", orderData);
-        }
-
-    } catch (error) {
-        console.log("💥 Error:", error);
-    }
-}
-
-
-async function createAndCaptureOrder() {
-    const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-    // 1️⃣ Get access token
-    const tokenRes = await fetch("https://api.paypal.com/v1/oauth2/token", {
-        method: "POST",
-        headers: {
-            "Authorization": `Basic ${auth}`,
-            "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: "grant_type=client_credentials"
-    });
-    const tokenData = await tokenRes.json();
-    const accessToken = tokenData.access_token;
-
-    // 2️⃣ Create order
-    const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            intent: "CAPTURE",
-            purchase_units: [{ amount: { currency_code: "USD", value: "1.00" } }]
-        })
-    });
-    const orderData = await orderRes.json();
-    console.log("Order created:", orderData);
-
-    // 3️⃣ Capture payment immediately
-    const captureRes = await fetch(`https://api.paypal.com/v2/checkout/orders/${orderData.id}/capture`, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${accessToken}`,
-            "Content-Type": "application/json"
-        }
-    });
-    const captureData = await captureRes.json();
-    console.log("Payment captured:", captureData);
-}
-
 // 1️⃣ Get access token
 async function getAccessToken() {
     const auth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
@@ -778,69 +546,6 @@ app.post("/capture-order", async (req, res) => {
         res.status(500).json({ error: "Something went wrong" });
     }
 });
-
-// createAndCaptureOrder();
-
-
-// testPaypal();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// db.prepare(`DROP TABLE IF EXISTS companies`).run();
-// db.prepare(`DROP TABLE IF EXISTS companies_fts`).run();
-
-// Run
-// loadAllJsonsToSQLite("./data", "./sqldb/companies.db");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
