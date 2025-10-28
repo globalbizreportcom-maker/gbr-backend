@@ -3,7 +3,7 @@ name: Deploy Backend
 on:
   push:
     branches:
-      - main  # replace with your branch if different
+      - main  # change if your default branch differs
 
 jobs:
   deploy:
@@ -21,23 +21,35 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.PORT }}
           script: |
-            # Navigate to backend folder
+            echo "🚀 Starting backend deployment on VPS..."
+
             cd /var/www/backend
 
             # Clone repo if first time
             if [ ! -d ".git" ]; then
+              echo "🌀 Cloning repo..."
               git clone https://github.com/globalbizreportcom-maker/gbr-backend.git .
             fi
 
-            # Reset & pull latest code
-            git reset --hard
-            git pull origin main
+            echo "🔄 Fetching latest changes..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Preserve important local folders & files (like .env, uploads, sqldb)
+            echo "🧩 Preserving data folders..."
+            mkdir -p sqldb uploads data
 
             # Install dependencies
-            rm -rf node_modules package-lock.json
+            echo "📦 Installing dependencies..."
             npm install --legacy-peer-deps
 
-            # Restart backend with PM2
+            # Ensure PM2 is installed globally
+            if ! command -v pm2 &> /dev/null; then
+              npm install -g pm2
+            fi
+
+            # Restart or start backend with PM2
+            echo "🔁 Restarting PM2 process..."
             pm2 describe gbr-backend > /dev/null 2>&1
             if [ $? -eq 0 ]; then
               pm2 restart gbr-backend
@@ -45,5 +57,5 @@ jobs:
               pm2 start server.js --name gbr-backend
             fi
 
-            # Save PM2 state
             pm2 save
+            echo "✅ Deployment complete!"
