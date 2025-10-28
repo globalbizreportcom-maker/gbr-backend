@@ -125,21 +125,19 @@ app.post("/api/payment/capture-paypal", capturePaypalPayment);
 // failed orders
 app.post("/api/payment/cancellation", handlePaymentCancelled);
 
-
-
 app.post("/api/users/check-or-create", checkOrCreateUser);
-
-// base api 
-app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully **" });
-});
-
-app.get("/cors/test", (req, res) => {
-    res.json({ message: "Backend connected" });
-});
 
 // Folder to store uploaded files temporarily
 const upload = multer({ dest: "uploads/" });
+
+
+
+
+
+// base api 
+app.get("/", (req, res) => {
+    res.json({ message: "Backend connected successfully ___" });
+});
 
 
 app.get("/api/company-details", (req, res) => {
