@@ -260,7 +260,7 @@ export const createOrder = async (req, res) => {
     try {
         const { amount, userId, formData } = req.body;
 
-        if (!amount || !formData) {
+        if (!amount || !formData || !userId) {
             return res.status(400).json({ error: "Missing required parameters" });
         }
 
@@ -410,8 +410,6 @@ export const createOrder = async (req, res) => {
     }
 };
 
-
-
 // 🔹 Verify Razorpay Payment
 export const verifyPayment = async (req, res) => {
     try {
@@ -520,7 +518,7 @@ const client = new paypal.core.PayPalHttpClient(environment);
 export const createPaypalOrder = async (req, res) => {
     try {
         const { userId, formData } = req.body;
-        if (!formData) return res.status(400).json({ error: "Missing formData" });
+        if (!formData || !userId) return res.status(400).json({ error: "Missing required fields" });
 
         // 1️⃣ Save ReportRequest in DB
         const reportRequestData = {

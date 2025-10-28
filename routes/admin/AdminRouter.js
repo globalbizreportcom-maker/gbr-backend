@@ -314,15 +314,12 @@ adminRouter.get("/payments", async (req, res) => {
                 select: "targetCompany requesterInfo status createdAt", // Include both requesterInfo & targetCompany
             })
             .sort({ createdAt: -1 });
-
         res.status(200).json(payments);
     } catch (err) {
         console.error("Error fetching payments:", err);
         res.status(500).json({ message: "Error fetching payments" });
     }
 });
-
-
 
 // GET all contacts, sorted by latest
 adminRouter.get("/contacts", async (req, res) => {

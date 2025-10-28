@@ -29,4 +29,5 @@ const ReportRequestSchema = new mongoose.Schema({
     },
 }, { timestamps: true });
 
-export default mongoose.model("ReportRequest", ReportRequestSchema);
+// export default mongoose.model("ReportRequest", ReportRequestSchema);
+export default mongoose.model("ReportRequest", ReportRequestSchema, "reportrequests");

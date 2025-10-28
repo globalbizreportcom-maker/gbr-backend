@@ -14,17 +14,12 @@ import loginRouter from './routes/login.js';
 import userRouter from './routes/User.js';
 import { capturePaypalPayment, createOrder, createPaypalOrder, handlePaymentCancelled, verifyPayment } from './controllers/paymentController.js';
 import { checkOrCreateUser } from './controllers/userController.js';
-import { getFuseForState } from './search/fuseSetup.js';
 import multer from 'multer';
-import path from 'path';
-import fs from 'fs'
-import csv from "csv-parser";
-import { loadAllJsonsToSQLite } from './utils/loadAllJsonsToSQLite.js';
+import visitorsRouter from './routes/visitor.js';
 
 
 import Database from 'better-sqlite3';
 import { Buffer } from 'buffer';
-import { log } from 'console';
 
 const db = new Database("./sqldb/companies.db");
 
@@ -119,6 +114,8 @@ app.use('/register', registrationRouter);
 app.use('/login', loginRouter);
 app.use('/contact', contactRouter);
 app.use("/admin", adminRouter);
+app.use("/visitors", visitorsRouter);
+
 // Razorpay
 app.post("/api/payment/create-order", createOrder);
 app.post("/api/payment/verify", verifyPayment);
@@ -134,7 +131,7 @@ app.post("/api/users/check-or-create", checkOrCreateUser);
 
 // base api 
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully..." });
+    res.json({ message: "Backend connected successfully ***" });
 });
 
 app.get("/cors/test", (req, res) => {
@@ -502,8 +499,6 @@ function searchCompanyFTS(query, state = "") {
         sql += " AND LOWER(CompanyStateCode) = ?";
         params.push(state.toLowerCase());
     }
-
-    console.log("SQL:", sql, "Params:", params);
 
     const rows = db.prepare(sql).all(params);
     return rows;
