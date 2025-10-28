@@ -280,8 +280,72 @@ app.get("/api/companies", (req, res) => {
 
         const useFTS = hasCompany && company.trim().length >= 3; // FTS only for >=3 chars
 
+        // if (useFTS) {
+        //     const ftsKeyword = company.trim().split(/\s+/).map(k => `${k}*`).join(" ");
+        //     const ftsParams = { keyword: ftsKeyword };
+        //     if (hasState) ftsParams.state = normalizedState;
+
+        //     const whereParts = ["fts.CompanyName MATCH @keyword"];
+        //     if (hasState) whereParts.push("LOWER(TRIM(c.CompanyStateCode)) = @state");
+        //     const whereClause = whereParts.join(" AND ");
+
+        //     totalRows = db.prepare(`
+        //   SELECT COUNT(*) AS total
+        //   FROM companies c
+        //   JOIN companies_fts fts ON c.rowid = fts.rowid
+        //   WHERE ${whereClause}
+        // `).get(ftsParams).total;
+
+        //     rows = db.prepare(`
+        //   SELECT c.*
+        //   FROM companies c
+        //   JOIN companies_fts fts ON c.rowid = fts.rowid
+        //   WHERE ${whereClause}
+        //   LIMIT @perPage OFFSET @offset
+        // `).all({ ...ftsParams, perPage, offset });
+
+        //     // fallback to LIKE if FTS returns 0
+        //     if (rows.length === 0) {
+        //         const likeParams = { keyword: `${company}%` };
+        //         if (hasState) likeParams.state = normalizedState;
+
+        //         totalRows = db.prepare(`
+        //     SELECT COUNT(*) AS total
+        //     FROM companies
+        //     WHERE CompanyName LIKE @keyword
+        //     ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
+        //   `).get(likeParams).total;
+
+        //         rows = db.prepare(`
+        //     SELECT *
+        //     FROM companies
+        //     WHERE CompanyName LIKE @keyword
+        //     ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
+        //     LIMIT @perPage OFFSET @offset
+        //   `).all({ ...likeParams, perPage, offset });
+        //     }
+
+        // } 
         if (useFTS) {
-            const ftsKeyword = company.trim().split(/\s+/).map(k => `${k}*`).join(" ");
+            const cleanFTSQuery = (str) =>
+                str
+                    .replace(/[^\w\s]/g, " ") // remove all non-word chars (. , @ etc)
+                    .replace(/\s+/g, " ")     // collapse spaces
+                    .trim()
+                    .toLowerCase();
+
+            const cleanedCompany = cleanFTSQuery(company);
+
+            // Prevent empty query from breaking MATCH
+            if (!cleanedCompany) {
+                return res.json({ totalRows: 0, totalPages: 0, page, perPage, rows: [] });
+            }
+
+            const ftsKeyword = cleanedCompany
+                .split(/\s+/)
+                .map(k => `${k}*`) // wildcard for each term
+                .join(" ");
+
             const ftsParams = { keyword: ftsKeyword };
             if (hasState) ftsParams.state = normalizedState;
 
@@ -289,43 +353,45 @@ app.get("/api/companies", (req, res) => {
             if (hasState) whereParts.push("LOWER(TRIM(c.CompanyStateCode)) = @state");
             const whereClause = whereParts.join(" AND ");
 
+            // --- FTS Query ---
             totalRows = db.prepare(`
-          SELECT COUNT(*) AS total
-          FROM companies c
-          JOIN companies_fts fts ON c.rowid = fts.rowid
-          WHERE ${whereClause}
-        `).get(ftsParams).total;
+              SELECT COUNT(*) AS total
+              FROM companies c
+              JOIN companies_fts fts ON c.rowid = fts.rowid
+              WHERE ${whereClause}
+            `).get(ftsParams).total;
 
             rows = db.prepare(`
-          SELECT c.*
-          FROM companies c
-          JOIN companies_fts fts ON c.rowid = fts.rowid
-          WHERE ${whereClause}
-          LIMIT @perPage OFFSET @offset
-        `).all({ ...ftsParams, perPage, offset });
+              SELECT c.*
+              FROM companies c
+              JOIN companies_fts fts ON c.rowid = fts.rowid
+              WHERE ${whereClause}
+              LIMIT @perPage OFFSET @offset
+            `).all({ ...ftsParams, perPage, offset });
 
-            // fallback to LIKE if FTS returns 0
+            // --- Fallback to LIKE ---
             if (rows.length === 0) {
                 const likeParams = { keyword: `${company}%` };
                 if (hasState) likeParams.state = normalizedState;
 
                 totalRows = db.prepare(`
-            SELECT COUNT(*) AS total
-            FROM companies
-            WHERE CompanyName LIKE @keyword
-            ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
-          `).get(likeParams).total;
+                  SELECT COUNT(*) AS total
+                  FROM companies
+                  WHERE CompanyName LIKE @keyword
+                  ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
+                `).get(likeParams).total;
 
                 rows = db.prepare(`
-            SELECT *
-            FROM companies
-            WHERE CompanyName LIKE @keyword
-            ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
-            LIMIT @perPage OFFSET @offset
-          `).all({ ...likeParams, perPage, offset });
+                  SELECT *
+                  FROM companies
+                  WHERE CompanyName LIKE @keyword
+                  ${hasState ? "AND LOWER(TRIM(CompanyStateCode)) = @state" : ""}
+                  LIMIT @perPage OFFSET @offset
+                `).all({ ...likeParams, perPage, offset });
             }
+        }
 
-        } else {
+        else {
             // LIKE search for short queries
             const likeParams = { keyword: `${company}%` };
             if (hasState) likeParams.state = normalizedState;
@@ -350,7 +416,7 @@ app.get("/api/companies", (req, res) => {
         res.json({ totalRows, totalPages, page, perPage, rows });
 
     } catch (err) {
-        console.error("❌ Server error:", err);
+        console.log("❌ Server error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
