@@ -131,7 +131,7 @@ app.post("/api/users/check-or-create", checkOrCreateUser);
 
 // base api 
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully ***" });
+    res.json({ message: "Backend connected successfully **" });
 });
 
 app.get("/cors/test", (req, res) => {
