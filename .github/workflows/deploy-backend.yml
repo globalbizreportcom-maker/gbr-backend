@@ -34,7 +34,7 @@ jobs:
             git pull origin main
 
             # Install dependencies
-            # rm -rf node_modules package-lock.json
+            rm -rf node_modules package-lock.json
             npm install
 
             # Restart backend with PM2
