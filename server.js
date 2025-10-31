@@ -136,7 +136,7 @@ const upload = multer({ dest: "uploads/" });
 
 // base api 
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully ___" });
+    res.json({ message: "Backend connected successfully *_*" });
 });
 
 
@@ -176,7 +176,6 @@ app.get("/api/company-details", (req, res) => {
         if (!ftsRows.length) return res.json([]); // No matches
 
         const rowIds = ftsRows.map(r => r.rowid);
-        console.log(rowIds);
         // Step 3: Fetch full company details from main table
         let mainSql = `SELECT * FROM companies WHERE rowid IN (${rowIds.map(() => "?").join(",")})`;
         const mainParams = [...rowIds];
@@ -351,7 +350,6 @@ app.get("/api/companies", (req, res) => {
         res.json({ totalRows, totalPages, page, perPage, rows });
 
     } catch (err) {
-        console.log("❌ Server error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -437,10 +435,8 @@ app.get("/companies-directory", (req, res) => {
             ${whereSQL}
             LIMIT @perPage OFFSET @offset
         `).all({ ...params, perPage, offset });
-        console.log(totalRows, totalPages, page, perPage, rows);
         res.json({ totalRows, totalPages, page, perPage, rows });
     } catch (err) {
-        console.log("❌ Server error:", err);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -466,11 +462,6 @@ const createAdminManually = async () => {
         const newAdmin = new Admin({ userName, password, role });
         await newAdmin.save();
 
-        console.log("✅ Admin created successfully!");
-        console.log({
-            userName: newAdmin.userName,
-            role: newAdmin.role,
-        });
     } catch (err) {
         console.log("❌ Error creating admin:", err.message);
     }

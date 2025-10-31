@@ -17,6 +17,8 @@ const paymentVisitorSchema = new mongoose.Schema(
         contactPhone: String,
         contactCompany: String,
         optionalEmail: String,
+        paymentAmount: String,   // ✅ must exist
+        currency: String,
         agreedToTerms: { type: Boolean, default: true },
         user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     },
