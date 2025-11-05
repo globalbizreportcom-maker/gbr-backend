@@ -194,9 +194,13 @@ app.get("/api/company-details", (req, res) => {
         const rows = db.prepare(mainSql).all(rowIds);
 
         res.json(rows);
+        return;
+
     } catch (err) {
 
         res.status(500).json({ error: "Database error" });
+        return;
+
     }
 });
 
@@ -276,7 +280,9 @@ app.get("/api/companies", (req, res) => {
             const cleanedCompany = cleanFTSQuery(company);
 
             if (!cleanedCompany) {
-                return res.json({ totalRows: 0, totalPages: 0, page, perPage, rows: [] });
+                res.json({ totalRows: 0, totalPages: 0, page, perPage, rows: [] });
+                return;
+
             }
 
             // ✅ 2. Build FTS keyword using wildcards (*)
@@ -354,9 +360,13 @@ app.get("/api/companies", (req, res) => {
 
         const totalPages = Math.ceil(totalRows / perPage);
         res.json({ totalRows, totalPages, page, perPage, rows });
+        return;
+
 
     } catch (err) {
         res.status(500).json({ error: "Server error" });
+        return;
+
     }
 });
 
@@ -442,8 +452,12 @@ app.get("/companies-directory", (req, res) => {
             LIMIT @perPage OFFSET @offset
         `).all({ ...params, perPage, offset });
         res.json({ totalRows, totalPages, page, perPage, rows });
+        return;
+
     } catch (err) {
         res.status(500).json({ error: "Server error" });
+        return;
+
     }
 });
 
@@ -514,6 +528,8 @@ app.post("/create-order", async (req, res) => {
 
         const orderData = await orderRes.json();
         res.json(orderData);
+        return;
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Something went wrong" });
@@ -536,9 +552,13 @@ app.post("/capture-order", async (req, res) => {
 
         const captureData = await captureRes.json();
         res.json(captureData);
+        return;
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ error: "Something went wrong" });
+        return;
+
     }
 });
 
@@ -599,9 +619,17 @@ startServer();
 
 
 // Global error handler middleware
+// app.use((err, req, res, next) => {
+//     console.log('Global error handler:', err.message);
+//     res.status(err.status || 500).json({
+//         error: 'Internal Server Error'
+//     });
+// });
+
 app.use((err, req, res, next) => {
     console.log('Global error handler:', err.message);
-    res.status(err.status || 500).json({
-        error: 'Internal Server Error'
-    });
+    if (res.headersSent) {
+        return next(err); // already sent, delegate to default handler
+    }
+    res.status(err.status || 500).json({ error: 'Internal Server Error' });
 });
