@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema(
         company: {
             type: String,
             required: [false, "Company is required"],
+        },
+        gstin: {
+            type: String,
+            required: [false, "gstin is required"],
         }
     },
     { timestamps: true }
