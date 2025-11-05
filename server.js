@@ -153,7 +153,7 @@ app.get("/", (req, res) => {
 
 app.get("/api/company-details", (req, res) => {
     const { query = "", state = "", cin = "" } = req.query;
-    let sent = false; // ✅ Track if response is already sent
+    let sent = false; // Track if response is already sent
 
     try {
         const cleanedQuery = query
@@ -161,10 +161,13 @@ app.get("/api/company-details", (req, res) => {
             .replace(/[^\w\s]/g, " ") // remove special chars
             .trim();
 
-        // ✅ If CIN is provided, directly fetch that record
+        // ✅ If CIN is provided, fetch that record
         if (cin) {
             const cinRow = db.prepare(`SELECT * FROM companies WHERE CIN = ?`).get(cin);
-            if (cinRow && !sent) { sent = true; return res.json([cinRow]); }
+            if (cinRow && !sent) {
+                sent = true;
+                return res.json([cinRow]);
+            }
         }
 
         // ✅ No CIN? then search by name/state
@@ -173,13 +176,12 @@ app.get("/api/company-details", (req, res) => {
             return res.json([]);
         }
 
-        const ftsKeyword = `%${cleanedQuery}%`;
-        let ftsSql = `SELECT rowid, CompanyName, CompanyStateCode FROM companies_fts WHERE 1=1`;
         const ftsParams = [];
+        let ftsSql = `SELECT rowid, CompanyName, CompanyStateCode FROM companies_fts WHERE 1=1`;
 
         if (cleanedQuery) {
             ftsSql += ` AND LOWER(REPLACE(CompanyName, '-', ' ')) LIKE ?`;
-            ftsParams.push(ftsKeyword);
+            ftsParams.push(`%${cleanedQuery}%`);
         }
 
         if (state) {
@@ -187,20 +189,39 @@ app.get("/api/company-details", (req, res) => {
             ftsParams.push(state.toLowerCase());
         }
 
-        const ftsRows = db.prepare(ftsSql).all(ftsParams);
-        if (!ftsRows.length && !sent) { sent = true; return res.json([]); }
+        // ✅ Add a LIMIT to prevent huge FTS results
+        ftsSql += ` LIMIT 100`; // max 100 results from FTS
 
+        const ftsRows = db.prepare(ftsSql).all(ftsParams);
+        if (!ftsRows.length && !sent) {
+            sent = true;
+            return res.json([]);
+        }
+
+        // ✅ Fetch main company rows safely
         const rowIds = ftsRows.map(r => r.rowid);
+        if (!rowIds.length && !sent) {
+            sent = true;
+            return res.json([]);
+        }
+
         const mainSql = `SELECT * FROM companies WHERE rowid IN (${rowIds.map(() => "?").join(",")})`;
         const rows = db.prepare(mainSql).all(rowIds);
 
-        if (!sent) { sent = true; return res.json(rows); }
+        if (!sent) {
+            sent = true;
+            return res.json(rows);
+        }
 
     } catch (err) {
         console.error("Database error:", err.message);
-        if (!sent) { sent = true; return res.status(500).json({ error: "Database error" }); }
+        if (!sent) {
+            sent = true;
+            return res.status(500).json({ error: "Database error" });
+        }
     }
 });
+
 
 
 // app.get("/api/company-details", (req, res) => {
