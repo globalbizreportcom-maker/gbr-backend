@@ -151,9 +151,9 @@ app.get("/", (req, res) => {
 
 
 
+
 app.get("/api/company-details", (req, res) => {
     const { query = "", state = "", cin = "" } = req.query;
-    let sent = false; // Track if response is already sent
 
     try {
         const cleanedQuery = query
@@ -161,27 +161,25 @@ app.get("/api/company-details", (req, res) => {
             .replace(/[^\w\s]/g, " ") // remove special chars
             .trim();
 
-        // ✅ If CIN is provided, fetch that record
+        // ✅ If CIN is provided, directly fetch that record
         if (cin) {
             const cinRow = db.prepare(`SELECT * FROM companies WHERE CIN = ?`).get(cin);
-            if (cinRow && !sent) {
-                sent = true;
-                return res.json([cinRow]);
-            }
+            if (cinRow) return res.json([cinRow]);
         }
 
         // ✅ No CIN? then search by name/state
-        if (!cleanedQuery && !state && !sent) {
-            sent = true;
+        if (!cleanedQuery && !state) {
             return res.json([]);
         }
 
-        const ftsParams = [];
+        const ftsKeyword = `%${cleanedQuery}%`;
         let ftsSql = `SELECT rowid, CompanyName, CompanyStateCode FROM companies_fts WHERE 1=1`;
+        const ftsParams = [];
 
         if (cleanedQuery) {
+            // normalize DB side too
             ftsSql += ` AND LOWER(REPLACE(CompanyName, '-', ' ')) LIKE ?`;
-            ftsParams.push(`%${cleanedQuery}%`);
+            ftsParams.push(ftsKeyword);
         }
 
         if (state) {
@@ -189,93 +187,23 @@ app.get("/api/company-details", (req, res) => {
             ftsParams.push(state.toLowerCase());
         }
 
-        // ✅ Add a LIMIT to prevent huge FTS results
-        ftsSql += ` LIMIT 100`; // max 100 results from FTS
-
         const ftsRows = db.prepare(ftsSql).all(ftsParams);
-        if (!ftsRows.length && !sent) {
-            sent = true;
-            return res.json([]);
-        }
+        if (!ftsRows.length) return res.json([]);
 
-        // ✅ Fetch main company rows safely
         const rowIds = ftsRows.map(r => r.rowid);
-        if (!rowIds.length && !sent) {
-            sent = true;
-            return res.json([]);
-        }
-
         const mainSql = `SELECT * FROM companies WHERE rowid IN (${rowIds.map(() => "?").join(",")})`;
         const rows = db.prepare(mainSql).all(rowIds);
 
-        if (!sent) {
-            sent = true;
-            return res.json(rows);
-        }
+        res.json(rows);
+        return;
 
     } catch (err) {
-        console.error("Database error:", err.message);
-        if (!sent) {
-            sent = true;
-            return res.status(500).json({ error: "Database error" });
-        }
+
+        res.status(500).json({ error: "Database error" });
+        return;
+
     }
 });
-
-
-
-// app.get("/api/company-details", (req, res) => {
-//     const { query = "", state = "", cin = "" } = req.query;
-
-//     try {
-//         const cleanedQuery = query
-//             .toLowerCase()
-//             .replace(/[^\w\s]/g, " ") // remove special chars
-//             .trim();
-
-//         // ✅ If CIN is provided, directly fetch that record
-//         if (cin) {
-//             const cinRow = db.prepare(`SELECT * FROM companies WHERE CIN = ?`).get(cin);
-//             if (cinRow) return res.json([cinRow]);
-//         }
-
-//         // ✅ No CIN? then search by name/state
-//         if (!cleanedQuery && !state) {
-//             return res.json([]);
-//         }
-
-//         const ftsKeyword = `%${cleanedQuery}%`;
-//         let ftsSql = `SELECT rowid, CompanyName, CompanyStateCode FROM companies_fts WHERE 1=1`;
-//         const ftsParams = [];
-
-//         if (cleanedQuery) {
-//             // normalize DB side too
-//             ftsSql += ` AND LOWER(REPLACE(CompanyName, '-', ' ')) LIKE ?`;
-//             ftsParams.push(ftsKeyword);
-//         }
-
-//         if (state) {
-//             ftsSql += ` AND LOWER(CompanyStateCode) = ?`;
-//             ftsParams.push(state.toLowerCase());
-//         }
-
-//         const ftsRows = db.prepare(ftsSql).all(ftsParams);
-//         if (!ftsRows.length) return res.json([]);
-
-//         const rowIds = ftsRows.map(r => r.rowid);
-//         const mainSql = `SELECT * FROM companies WHERE rowid IN (${rowIds.map(() => "?").join(",")})`;
-//         const rows = db.prepare(mainSql).all(rowIds);
-
-//         res.json(rows);
-//         return;
-
-//     } catch (err) {
-
-//         res.status(500).json({ error: "Database error" });
-//         return;
-
-//     }
-// });
 
 app.get("/api/companies", (req, res) => {
     try {
