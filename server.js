@@ -563,49 +563,6 @@ app.post("/capture-order", async (req, res) => {
 });
 
 
-// Main import function
-async function importUsers() {
-    try {
-
-        // 2. Read JSON file
-        const data = JSON.parse(fs.readFileSync("./data/gbr_customers.json", "utf-8"));
-
-        // 3. Map JSON to Mongoose model fields
-        const users = data.map((item) => ({
-            name: item.name || "",
-            email: item.email?.toLowerCase() || "",
-            phone: item.telephone || "",
-            country: item.country || "",
-            password: "", // optional
-            company: item.company_name || "",
-            gstin: item.gstin || "",
-            createdAt: item.dor ? new Date(item.dor) : new Date(), // ✅ Use 'dor' for createdAt
-        }));
-
-        // 4. Insert while avoiding duplicates
-        for (const user of users) {
-            if (!user.email) continue; // skip if no email
-            const exists = await User.findOne({ email: user.email });
-            if (exists) {
-                console.log(`⚠️ Skipped duplicate: ${user.email}`);
-                continue;
-            }
-            await User.create(user);
-            console.log(`✅ Inserted: ${user.email}`);
-        }
-
-        console.log("🎉 Import complete!");
-    } catch (error) {
-        console.log("❌ Error importing users:", error);
-    } finally {
-        console.log("🔌 MongoDB connection closed.");
-    }
-}
-
-// importUsers();
-
-
-
 
 // Connect to DB then start server
 const startServer = async () => {
