@@ -153,6 +153,7 @@ app.get("/", (req, res) => {
 
 app.get("/api/company-details", (req, res) => {
     const { query = "", state = "", cin = "" } = req.query;
+    let sent = false; // ✅ Track if response is already sent
 
     try {
         const cleanedQuery = query
@@ -163,11 +164,12 @@ app.get("/api/company-details", (req, res) => {
         // ✅ If CIN is provided, directly fetch that record
         if (cin) {
             const cinRow = db.prepare(`SELECT * FROM companies WHERE CIN = ?`).get(cin);
-            if (cinRow) return res.json([cinRow]);
+            if (cinRow && !sent) { sent = true; return res.json([cinRow]); }
         }
 
         // ✅ No CIN? then search by name/state
-        if (!cleanedQuery && !state) {
+        if (!cleanedQuery && !state && !sent) {
+            sent = true;
             return res.json([]);
         }
 
@@ -176,7 +178,6 @@ app.get("/api/company-details", (req, res) => {
         const ftsParams = [];
 
         if (cleanedQuery) {
-            // normalize DB side too
             ftsSql += ` AND LOWER(REPLACE(CompanyName, '-', ' ')) LIKE ?`;
             ftsParams.push(ftsKeyword);
         }
@@ -187,22 +188,73 @@ app.get("/api/company-details", (req, res) => {
         }
 
         const ftsRows = db.prepare(ftsSql).all(ftsParams);
-        if (!ftsRows.length) return res.json([]);
+        if (!ftsRows.length && !sent) { sent = true; return res.json([]); }
 
         const rowIds = ftsRows.map(r => r.rowid);
         const mainSql = `SELECT * FROM companies WHERE rowid IN (${rowIds.map(() => "?").join(",")})`;
         const rows = db.prepare(mainSql).all(rowIds);
 
-        res.json(rows);
-        return;
+        if (!sent) { sent = true; return res.json(rows); }
 
     } catch (err) {
-
-        res.status(500).json({ error: "Database error" });
-        return;
-
+        console.error("Database error:", err.message);
+        if (!sent) { sent = true; return res.status(500).json({ error: "Database error" }); }
     }
 });
+
+
+// app.get("/api/company-details", (req, res) => {
+//     const { query = "", state = "", cin = "" } = req.query;
+
+//     try {
+//         const cleanedQuery = query
+//             .toLowerCase()
+//             .replace(/[^\w\s]/g, " ") // remove special chars
+//             .trim();
+
+//         // ✅ If CIN is provided, directly fetch that record
+//         if (cin) {
+//             const cinRow = db.prepare(`SELECT * FROM companies WHERE CIN = ?`).get(cin);
+//             if (cinRow) return res.json([cinRow]);
+//         }
+
+//         // ✅ No CIN? then search by name/state
+//         if (!cleanedQuery && !state) {
+//             return res.json([]);
+//         }
+
+//         const ftsKeyword = `%${cleanedQuery}%`;
+//         let ftsSql = `SELECT rowid, CompanyName, CompanyStateCode FROM companies_fts WHERE 1=1`;
+//         const ftsParams = [];
+
+//         if (cleanedQuery) {
+//             // normalize DB side too
+//             ftsSql += ` AND LOWER(REPLACE(CompanyName, '-', ' ')) LIKE ?`;
+//             ftsParams.push(ftsKeyword);
+//         }
+
+//         if (state) {
+//             ftsSql += ` AND LOWER(CompanyStateCode) = ?`;
+//             ftsParams.push(state.toLowerCase());
+//         }
+
+//         const ftsRows = db.prepare(ftsSql).all(ftsParams);
+//         if (!ftsRows.length) return res.json([]);
+
+//         const rowIds = ftsRows.map(r => r.rowid);
+//         const mainSql = `SELECT * FROM companies WHERE rowid IN (${rowIds.map(() => "?").join(",")})`;
+//         const rows = db.prepare(mainSql).all(rowIds);
+
+//         res.json(rows);
+//         return;
+
+//     } catch (err) {
+
+//         res.status(500).json({ error: "Database error" });
+//         return;
+
+//     }
+// });
 
 app.get("/api/companies", (req, res) => {
     try {
@@ -508,59 +560,59 @@ async function getAccessToken() {
     return data.access_token;
 }
 
-// 2️⃣ Create order
-app.post("/create-order", async (req, res) => {
-    try {
-        const { amount } = req.body;
-        const accessToken = await getAccessToken();
+// // 2️⃣ Create order
+// app.post("/create-order", async (req, res) => {
+//     try {
+//         const { amount } = req.body;
+//         const accessToken = await getAccessToken();
 
-        const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                intent: "CAPTURE",
-                purchase_units: [{ amount: { currency_code: "USD", value: amount } }],
-            }),
-        });
+//         const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
+//             method: "POST",
+//             headers: {
+//                 "Authorization": `Bearer ${accessToken}`,
+//                 "Content-Type": "application/json",
+//             },
+//             body: JSON.stringify({
+//                 intent: "CAPTURE",
+//                 purchase_units: [{ amount: { currency_code: "USD", value: amount } }],
+//             }),
+//         });
 
-        const orderData = await orderRes.json();
-        res.json(orderData);
-        return;
+//         const orderData = await orderRes.json();
+//         res.json(orderData);
+//         return;
 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Something went wrong" });
-    }
-});
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ error: "Something went wrong" });
+//     }
+// });
 
-// 3️⃣ Capture payment
-app.post("/capture-order", async (req, res) => {
-    try {
-        const { orderId } = req.body;
-        const accessToken = await getAccessToken();
+// // 3️⃣ Capture payment
+// app.post("/capture-order", async (req, res) => {
+//     try {
+//         const { orderId } = req.body;
+//         const accessToken = await getAccessToken();
 
-        const captureRes = await fetch(`https://api.paypal.com/v2/checkout/orders/${orderId}/capture`, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${accessToken}`,
-                "Content-Type": "application/json",
-            },
-        });
+//         const captureRes = await fetch(`https://api.paypal.com/v2/checkout/orders/${orderId}/capture`, {
+//             method: "POST",
+//             headers: {
+//                 "Authorization": `Bearer ${accessToken}`,
+//                 "Content-Type": "application/json",
+//             },
+//         });
 
-        const captureData = await captureRes.json();
-        res.json(captureData);
-        return;
+//         const captureData = await captureRes.json();
+//         res.json(captureData);
+//         return;
 
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: "Something went wrong" });
-        return;
+//     } catch (err) {
+//         console.error(err);
+//         res.status(500).json({ error: "Something went wrong" });
+//         return;
 
-    }
-});
+//     }
+// });
 
 
 
