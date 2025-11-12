@@ -24,6 +24,7 @@
     "dotenv": "^17.1.0",
     "exceljs": "^4.4.0",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
     "fast-csv": "^5.0.5",
     "fs": "^0.0.1-security",
     "fuse.js": "^7.1.0",

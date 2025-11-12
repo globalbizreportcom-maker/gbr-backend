@@ -17,7 +17,7 @@ import { checkOrCreateUser } from './controllers/userController.js';
 import multer from 'multer';
 import visitorsRouter from './routes/visitor.js';
 import fs from "fs";
-
+import rateLimit from 'express-rate-limit';
 
 import Database from 'better-sqlite3';
 import { Buffer } from 'buffer';
@@ -117,6 +117,14 @@ app.use(
         credentials: true,
     })
 );
+
+// 🔹 meta limiter — all routes
+const metaLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 100, // 100 requests per minute
+});
+
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -149,6 +157,22 @@ app.get("/", (req, res) => {
     res.json({ message: "Backend connected successfully ***" });
 });
 
+app.get("/companies-meta", metaLimiter, (req, res) => {
+    try {
+        // ✅ Fastest query possible — just one COUNT(*)
+        const total = db.prepare("SELECT COUNT(*) AS total FROM companies").get().total;
+
+        // Assuming perPage = 20 like your main route
+        const totalPages = Math.ceil(total / 20);
+
+        // ✅ Cache headers for 24 hours (Google doesn’t need live data)
+        res.setHeader("Cache-Control", "public, max-age=86400");
+        res.json({ totalPages });
+    } catch (error) {
+        console.error("Error fetching meta:", error);
+        res.status(500).json({ totalPages: 0, error: "meta fetch failed" });
+    }
+});
 
 
 
