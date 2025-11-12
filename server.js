@@ -399,7 +399,6 @@ app.get("/api/companies", (req, res) => {
 
     }
 });
-import rateLimit from "express-rate-limit";
 
 // ✅ Optional limiter (protect this endpoint from abuse)
 const companiesLimiter = rateLimit({
