@@ -403,7 +403,7 @@ app.get("/api/companies", (req, res) => {
 // ✅ Optional limiter (protect this endpoint from abuse)
 const companiesLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 50, // max 50 requests per IP per minute
+    max: 100, // max 50 requests per IP per minute
     message: { error: "Too many requests. Please try again later." },
 });
 
