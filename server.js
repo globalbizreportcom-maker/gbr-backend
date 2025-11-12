@@ -29,6 +29,10 @@ const db = new Database("./sqldb/companies.db");
 dotenv.config();
 
 const app = express();
+
+
+app.set("trust proxy", 1);
+
 const server = http.createServer(app);
 
 const PORT = 5000;
@@ -121,6 +125,7 @@ app.use(
 // 🔹 meta limiter — all routes
 const metaLimiter = rateLimit({
     windowMs: 60 * 1000,
+    message: { error: "Too many requests, please try again later." },
     max: 100, // 100 requests per minute
 });
 
@@ -176,7 +181,7 @@ app.get("/companies-meta", metaLimiter, (req, res) => {
 
 
 
-app.get("/api/company-details", (req, res) => {
+app.get("/api/company-details", metaLimiter, (req, res) => {
     const { query = "", state = "", cin = "" } = req.query;
 
     try {
@@ -394,8 +399,17 @@ app.get("/api/companies", (req, res) => {
 
     }
 });
+import rateLimit from "express-rate-limit";
 
-app.get("/companies-directory", (req, res) => {
+// ✅ Optional limiter (protect this endpoint from abuse)
+const companiesLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 50, // max 50 requests per IP per minute
+    message: { error: "Too many requests. Please try again later." },
+});
+
+// ✅ Safe route handler
+app.get("/companies-directory", companiesLimiter, (req, res) => {
     try {
         let {
             company = "",
@@ -409,21 +423,24 @@ app.get("/companies-directory", (req, res) => {
             perPage = 20
         } = req.query;
 
-        page = Number(page) || 1;
-        perPage = Number(perPage) || 20;
+        // ✅ Input sanitization & validation
+        page = Math.max(1, parseInt(page) || 1);
+        perPage = Math.min(100, parseInt(perPage) || 20); // limit max results per page
         const offset = (page - 1) * perPage;
 
-        company = (company || "").trim();
-        country = (country || "").trim().toLowerCase();
-        state = (state || "").trim().toLowerCase();
-        industry = (industry || "").trim();
-        companyType = (companyType || "").trim();
-        status = (status || "").trim();
-        alphabet = (alphabet || "").trim();
+        // ✅ Clean strings (avoid injection & performance issues)
+        company = company.trim();
+        country = country.trim().toLowerCase();
+        state = state.trim().toLowerCase();
+        industry = industry.trim();
+        companyType = companyType.trim();
+        status = status.trim();
+        alphabet = alphabet.trim();
 
         const whereClauses = [];
         const params = {};
 
+        // ✅ Build dynamic SQL safely using parameter binding
         if (company) {
             whereClauses.push("CompanyName LIKE @company");
             params.company = `%${company}%`;
@@ -445,7 +462,6 @@ app.get("/companies-directory", (req, res) => {
         }
 
         if (industry) {
-            // Correct column name (change "Industry" if your DB uses another name)
             whereClauses.push("CompanyIndustrialClassification = @industry");
             params.industry = industry;
         }
@@ -462,29 +478,132 @@ app.get("/companies-directory", (req, res) => {
 
         const whereSQL = whereClauses.length ? "WHERE " + whereClauses.join(" AND ") : "";
 
-        const totalRows = db.prepare(`
+        // ✅ Query total count (use try/catch to avoid crashes)
+        const totalCountStmt = db.prepare(`
             SELECT COUNT(*) AS total
             FROM companies
             ${whereSQL}
-        `).get(params).total;
+        `);
+        const totalRows = totalCountStmt.get(params)?.total || 0;
 
         const totalPages = Math.ceil(totalRows / perPage);
 
-        const rows = db.prepare(`
+        // ✅ Fetch paginated data
+        const dataStmt = db.prepare(`
             SELECT *
             FROM companies
             ${whereSQL}
             LIMIT @perPage OFFSET @offset
-        `).all({ ...params, perPage, offset });
-        res.json({ totalRows, totalPages, page, perPage, rows });
-        return;
+        `);
+        const rows = dataStmt.all({ ...params, perPage, offset });
+
+        // ✅ Structured JSON response
+        res.status(200).json({
+            success: true,
+            totalRows,
+            totalPages,
+            page,
+            perPage,
+            rows
+        });
 
     } catch (err) {
-        res.status(500).json({ error: "Server error" });
-        return;
-
+        console.error("Error in /companies-directory:", err);
+        res.status(500).json({ error: "Server error. Please try again later." });
     }
 });
+
+
+// app.get("/companies-directory", (req, res) => {
+//     try {
+//         let {
+//             company = "",
+//             country = "",
+//             state = "",
+//             industry = "",
+//             companyType = "",
+//             status = "",
+//             alphabet = "",
+//             page = 1,
+//             perPage = 20
+//         } = req.query;
+
+//         page = Number(page) || 1;
+//         perPage = Number(perPage) || 20;
+//         const offset = (page - 1) * perPage;
+
+//         company = (company || "").trim();
+//         country = (country || "").trim().toLowerCase();
+//         state = (state || "").trim().toLowerCase();
+//         industry = (industry || "").trim();
+//         companyType = (companyType || "").trim();
+//         status = (status || "").trim();
+//         alphabet = (alphabet || "").trim();
+
+//         const whereClauses = [];
+//         const params = {};
+
+//         if (company) {
+//             whereClauses.push("CompanyName LIKE @company");
+//             params.company = `%${company}%`;
+//         }
+
+//         if (alphabet) {
+//             whereClauses.push("CompanyName LIKE @alphabet");
+//             params.alphabet = `${alphabet}%`;
+//         }
+
+//         if (country) {
+//             whereClauses.push("LOWER(TRIM(Country)) = @country");
+//             params.country = country;
+//         }
+
+//         if (state) {
+//             whereClauses.push("LOWER(TRIM(CompanyStateCode)) = @state");
+//             params.state = state;
+//         }
+
+//         if (industry) {
+//             // Correct column name (change "Industry" if your DB uses another name)
+//             whereClauses.push("CompanyIndustrialClassification = @industry");
+//             params.industry = industry;
+//         }
+
+//         if (companyType) {
+//             whereClauses.push("CompanyClass = @companyType");
+//             params.companyType = companyType;
+//         }
+
+//         if (status) {
+//             whereClauses.push("CompanyStatus = @status");
+//             params.status = status;
+//         }
+
+//         const whereSQL = whereClauses.length ? "WHERE " + whereClauses.join(" AND ") : "";
+
+//         const totalRows = db.prepare(`
+//             SELECT COUNT(*) AS total
+//             FROM companies
+//             ${whereSQL}
+//         `).get(params).total;
+
+//         const totalPages = Math.ceil(totalRows / perPage);
+
+//         const rows = db.prepare(`
+//             SELECT *
+//             FROM companies
+//             ${whereSQL}
+//             LIMIT @perPage OFFSET @offset
+//         `).all({ ...params, perPage, offset });
+//         res.json({ totalRows, totalPages, page, perPage, rows });
+//         return;
+
+//     } catch (err) {
+//         res.status(500).json({ error: "Server error" });
+//         return;
+
+//     }
+// });
 
 const createAdminManually = async () => {
     try {
