@@ -408,6 +408,7 @@ const companiesLimiter = rateLimit({
 });
 
 // ✅ Safe route handler
+// ✅ Optimized & safe route handler
 app.get("/companies-directory", companiesLimiter, (req, res) => {
     try {
         let {
@@ -418,16 +419,12 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
             companyType = "",
             status = "",
             alphabet = "",
-            page = 1,
+            cursor = "", // keyset pagination
             perPage = 20
         } = req.query;
 
-        // ✅ Input sanitization & validation
-        page = Math.max(1, parseInt(page) || 1);
-        perPage = Math.min(100, parseInt(perPage) || 20); // limit max results per page
-        const offset = (page - 1) * perPage;
-
-        // ✅ Clean strings (avoid injection & performance issues)
+        // ✅ Input sanitization
+        perPage = Math.min(100, parseInt(perPage) || 20); // max 100
         company = company.trim();
         country = country.trim().toLowerCase();
         state = state.trim().toLowerCase();
@@ -439,78 +436,70 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
         const whereClauses = [];
         const params = {};
 
-        // ✅ Build dynamic SQL safely using parameter binding
+        // ✅ Filters
         if (company) {
             whereClauses.push("CompanyName LIKE @company");
             params.company = `%${company}%`;
         }
-
         if (alphabet) {
             whereClauses.push("CompanyName LIKE @alphabet");
             params.alphabet = `${alphabet}%`;
         }
-
         if (country) {
             whereClauses.push("LOWER(TRIM(Country)) = @country");
             params.country = country;
         }
-
         if (state) {
             whereClauses.push("LOWER(TRIM(CompanyStateCode)) = @state");
             params.state = state;
         }
-
         if (industry) {
             whereClauses.push("CompanyIndustrialClassification = @industry");
             params.industry = industry;
         }
-
         if (companyType) {
             whereClauses.push("CompanyClass = @companyType");
             params.companyType = companyType;
         }
-
         if (status) {
             whereClauses.push("CompanyStatus = @status");
             params.status = status;
         }
 
+        // ✅ Keyset pagination (using rowid)
+        if (cursor) {
+            whereClauses.push("rowid > @cursor");
+            params.cursor = parseInt(cursor);
+        }
+
         const whereSQL = whereClauses.length ? "WHERE " + whereClauses.join(" AND ") : "";
 
-        // ✅ Query total count (use try/catch to avoid crashes)
-        const totalCountStmt = db.prepare(`
-            SELECT COUNT(*) AS total
-            FROM companies
-            ${whereSQL}
-        `);
-        const totalRows = totalCountStmt.get(params)?.total || 0;
-
-        const totalPages = Math.ceil(totalRows / perPage);
-
-        // ✅ Fetch paginated data
+        // ✅ Select only essential columns (lighter payload)
         const dataStmt = db.prepare(`
-            SELECT *
+            SELECT rowid, CIN, CompanyName, Country, CompanyStateCode, CompanyStatus, CompanyClass
             FROM companies
             ${whereSQL}
-            LIMIT @perPage OFFSET @offset
+            ORDER BY rowid ASC
+            LIMIT @perPage
         `);
-        const rows = dataStmt.all({ ...params, perPage, offset });
 
-        // ✅ Structured JSON response
+        const rows = dataStmt.all({ ...params, perPage });
+
+        // ✅ Determine next cursor
+        const nextCursor = rows.length ? rows[rows.length - 1].rowid : null;
+
         res.status(200).json({
             success: true,
-            totalRows,
-            totalPages,
-            page,
             perPage,
-            rows
+            rows,
+            nextCursor, // client can use this for next page
         });
-
     } catch (err) {
         console.error("Error in /companies-directory:", err);
         res.status(500).json({ error: "Server error. Please try again later." });
     }
 });
+
 
 
 // app.get("/companies-directory", (req, res) => {
