@@ -179,8 +179,6 @@ app.get("/companies-meta", metaLimiter, (req, res) => {
     }
 });
 
-
-
 app.get("/api/company-details", metaLimiter, (req, res) => {
     const { query = "", state = "", cin = "" } = req.query;
 
@@ -421,28 +419,28 @@ app.get("/companies-fast", fastLimiter, (req, res) => {
         const params = [];
 
         if (company) {
-            filters.push("CompanyName LIKE ?");
-            params.push(`%${company}%`);
+            filters.push("LOWER(CompanyName) LIKE ?");
+            params.push(`%${company.toLowerCase()}%`);
         }
         if (alphabet) {
-            filters.push("CompanyName LIKE ?");
-            params.push(`${alphabet}%`);
+            filters.push("LOWER(CompanyName) LIKE ?");
+            params.push(`${alphabet.toLowerCase()}%`);
         }
         if (state) {
-            filters.push("CompanyStateCode = ?");
-            params.push(state);
+            filters.push("LOWER(CompanyStateCode) = ?");
+            params.push(state.toLowerCase());
         }
         if (industry) {
-            filters.push("Industry = ?");
-            params.push(industry);
+            filters.push("LOWER(CompanyIndustrialClassification) = ?");
+            params.push(industry.toLowerCase());
         }
         if (companyType) {
-            filters.push("CompanyType = ?");
-            params.push(companyType);
+            filters.push("LOWER(CompanyClass) = ?");
+            params.push(companyType.toLowerCase());
         }
         if (status) {
-            filters.push("CompanyStatus = ?");
-            params.push(status);
+            filters.push("LOWER(CompanyStatus) = ?");
+            params.push(status.toLowerCase());
         }
 
         const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
@@ -450,9 +448,14 @@ app.get("/companies-fast", fastLimiter, (req, res) => {
         // ✅ Total count for pagination
         const total = db.prepare(`SELECT COUNT(*) AS total FROM companies ${whereClause}`).get(...params).total;
 
-        // ✅ Paginated data
-        const rows = db.prepare(`SELECT * FROM companies ${whereClause} ORDER BY CompanyName ASC LIMIT ? OFFSET ?`)
-            .all(...params, perPage, offset);
+        // ✅ Paginated data with ordering by state then name
+        const rows = db.prepare(`
+            SELECT * FROM companies
+            ${whereClause}
+            ORDER BY LOWER(CompanyStateCode) ASC, LOWER(CompanyName) ASC
+            LIMIT ? OFFSET ?
+        `).all(...params, perPage, offset);
+
 
         const totalPages = Math.ceil(total / perPage);
 
@@ -463,11 +466,103 @@ app.get("/companies-fast", fastLimiter, (req, res) => {
             page: Number(page),
             perPage
         });
+
     } catch (err) {
-        console.error("Error fetching fast companies:", err);
         res.status(500).json({ rows: [], totalPages: 0, totalResults: 0, error: "Fetch failed" });
     }
 });
+
+
+
+// GET /companies-fast
+// app.get("/companies-fast", fastLimiter, (req, res) => {
+//     try {
+//         const {
+//             page = 1,
+//             company = "",
+//             alphabet,
+//             state,
+//             industry,
+//             companyType,
+//             status,
+//             orderByState = false // optional flag to order by state
+//         } = req.query;
+
+//         const perPage = 20;
+//         const offset = (page - 1) * perPage;
+
+//         // Build filters dynamically
+//         const filters = [];
+//         const params = [];
+
+//         if (company) {
+//             filters.push("CompanyName LIKE ?");
+//             params.push(`%${company}%`);
+//         }
+//         if (alphabet) {
+//             filters.push("CompanyName LIKE ?");
+//             params.push(`${alphabet}%`);
+//         }
+//         if (state) {
+//             filters.push("CompanyStateCode = ?");
+//             params.push(state);
+//         }
+//         if (industry) {
+//             filters.push("Industry = ?");
+//             params.push(industry);
+//         }
+//         if (companyType) {
+//             filters.push("CompanyType = ?");
+//             params.push(companyType);
+//         }
+//         if (status) {
+//             filters.push("CompanyStatus = ?");
+//             params.push(status);
+//         }
+
+//         const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+
+//         // Total count for pagination
+//         const total = db.prepare(`SELECT COUNT(*) AS total FROM companies ${whereClause}`).get(...params).total;
+
+//         // Build ORDER BY
+//         let orderBy = "";
+//         if (filters.length === 0) {
+//             // No filters → order alphabetically A-Z first, then numbers/symbols
+//             orderBy = `
+//                 ORDER BY 
+//                 CASE 
+//                     WHEN CompanyName GLOB '[A-Za-z]*' THEN 0
+//                     ELSE 1
+//                 END,
+//                 CompanyName ASC
+//             `;
+//             if (orderByState) {
+//                 orderBy = `ORDER BY CompanyStateCode ASC, ` + orderBy.replace("ORDER BY", "");
+//             }
+//         } else {
+//             // If filters exist → default order by CompanyName
+//             orderBy = "ORDER BY CompanyName ASC";
+//         }
+
+//         // Fetch paginated rows
+//         const rows = db.prepare(`SELECT * FROM companies ${whereClause} ${orderBy} LIMIT ? OFFSET ?`)
+//             .all(...params, perPage, offset);
+
+//         const totalPages = Math.ceil(total / perPage);
+
+//         res.json({
+//             rows,
+//             totalPages,
+//             totalResults: total,
+//             page: Number(page),
+//             perPage
+//         });
+//     } catch (err) {
+//         console.error("Error fetching fast companies:", err);
+//         res.status(500).json({ rows: [], totalPages: 0, totalResults: 0, error: "Fetch failed" });
+//     }
+// });
 
 
 
@@ -478,94 +573,42 @@ const companiesLimiter = rateLimit({
     message: { error: "Too many requests. Please try again later." },
 });
 
-// ✅ Safe route handler
-// ✅ Optimized & safe route handler
 // ✅ Optimized & safe route handler using old working column names
 app.get("/companies-directory", companiesLimiter, (req, res) => {
     try {
         let {
-            company = "",
-            state = "",
-            industry = "",
-            companyType = "",
-            status = "",
-            alphabet = "",
-            cursor = "", // keyset pagination
-            perPage = 20
+            perPage = 20,
+            offset = 0
         } = req.query;
 
-        // ✅ Input sanitization
-        perPage = Math.min(100, parseInt(perPage) || 20); // max 100
-        company = company.trim();
-        state = state.trim().toLowerCase();
-        industry = industry.trim();
-        companyType = companyType.trim();
-        status = status.trim();
-        alphabet = alphabet.trim();
+        perPage = Math.min(100, parseInt(perPage) || 20);
+        offset = parseInt(offset) || 0;
 
-        const whereClauses = [];
-        const params = {};
-
-        // ✅ Filters
-        if (company) {
-            whereClauses.push("CompanyName LIKE @company");
-            params.company = `%${company}%`;
-        }
-        if (alphabet) {
-            whereClauses.push("CompanyName LIKE @alphabet");
-            params.alphabet = `${alphabet}%`;
-        }
-        if (state) {
-            whereClauses.push("LOWER(TRIM(CompanyStateCode)) = @state");
-            params.state = state;
-        }
-        if (industry) {
-            whereClauses.push("CompanyIndustrialClassification = @industry");
-            params.industry = industry;
-        }
-        if (companyType) {
-            whereClauses.push("CompanyClass = @companyType");
-            params.companyType = companyType;
-        }
-        if (status) {
-            whereClauses.push("CompanyStatus = @status");
-            params.status = status;
-        }
-
-        // ✅ Keyset pagination (rowid)
-        if (cursor) {
-            whereClauses.push("rowid > @cursor");
-            params.cursor = parseInt(cursor);
-        }
-
-        const whereSQL = whereClauses.length ? "WHERE " + whereClauses.join(" AND ") : "";
-
-        // ✅ Select only essential columns (lighter payload)
+        // ✅ Select only essential columns
         const dataStmt = db.prepare(`
-            SELECT rowid, CIN, CompanyName, CompanyStateCode, CompanyStatus, CompanyClass, Registered_Office_Address
+            SELECT CIN, CompanyName, CompanyStateCode
             FROM companies
-            ${whereSQL}
             ORDER BY rowid ASC
-            LIMIT @perPage
+            LIMIT @perPage OFFSET @offset
         `);
 
-        const rows = dataStmt.all({ ...params, perPage });
-
-        // ✅ Determine next cursor for client-side keyset pagination
-        const nextCursor = rows.length ? rows[rows.length - 1].rowid : null;
+        const rows = dataStmt.all({ perPage, offset });
 
         res.status(200).json({
             success: true,
             perPage,
+            offset,
             rows,
-            nextCursor, // client can use this for next page
+            total: db.prepare("SELECT COUNT(*) as count FROM companies").get().count
         });
 
     } catch (err) {
-        console.error("Error in /companies-directory:", err);
+        console.log("Error in /companies-directory:", err);
         res.status(500).json({ error: "Server error. Please try again later." });
     }
 });
+
+
 
 
 
