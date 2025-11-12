@@ -62,7 +62,7 @@ contactRouter.post('/form-submit', async (req, res, next) => {
         }
 
 
-        res.status(200).json({ success: true });
+        // res.status(200).json({ success: true });
 
         // You can save this data in MongoDB or send an email
         return res.status(200).json({ success: true });
