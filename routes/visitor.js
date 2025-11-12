@@ -21,7 +21,8 @@ visitorsRouter.post("/payments", async (req, res) => {
             ...formData, user: userId,
             paymentAmount: formData.paymentAmount,
             currency: formData.currency,
-            contactCountry: formData.contactCountry?.label || formData.contactCountry
+            contactCountry: formData.contactCountry?.label || formData.contactCountry,
+            companyGst: formData.companyGst || '',
         });
         await visitor.save();
 

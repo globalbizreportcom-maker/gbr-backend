@@ -7,7 +7,7 @@ import jwt from "jsonwebtoken";
 
 export const checkOrCreateUser = async (req, res) => {
     try {
-        const { name, email, country, phone, company } = req.body;
+        const { name, email, country, phone, company, gst } = req.body;
         if (!email || !name) {
             return res.status(400).json({ error: "Name and Email are required" });
         }
@@ -25,6 +25,7 @@ export const checkOrCreateUser = async (req, res) => {
             country: country,
             phone: phone || "",
             company: company || "",
+            gstin: gst
         });
 
         // 🔑 Create JWT token

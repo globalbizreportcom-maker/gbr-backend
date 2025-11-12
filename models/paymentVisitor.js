@@ -16,6 +16,7 @@ const paymentVisitorSchema = new mongoose.Schema(
         contactCountry: String,
         contactPhone: String,
         contactCompany: String,
+        companyGst: String,
         optionalEmail: String,
         paymentAmount: String,   // ✅ must exist
         currency: String,

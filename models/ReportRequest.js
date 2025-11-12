@@ -20,6 +20,7 @@ const ReportRequestSchema = new mongoose.Schema({
         company: String,
         website: String,
         country: String,
+        gst: String,
     },
     agreementAccepted: { type: Boolean, default: false },
     status: {
