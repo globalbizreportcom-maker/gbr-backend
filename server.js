@@ -88,7 +88,7 @@ app.disable("x-powered-by");
 
 // Middleware
 const allowedOrigins = [
-    "http://localhost:3000",// --dev
+    // "http://localhost:3000",// --dev
     /\.globalbizreport\.com$/,
     "https://globalbizreport.com",
     "https://www.globalbizreport.com",
@@ -146,7 +146,7 @@ const upload = multer({ dest: "uploads/" });
 
 // base api 
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully *_*" });
+    res.json({ message: "Backend connected successfully ***" });
 });
 
 

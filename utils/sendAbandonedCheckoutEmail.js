@@ -12,13 +12,17 @@ export const sendAbandonedCheckoutEmail = async (userId, visitorData) => {
     const recipientEmail = visitorData.contactEmail;
     const recipientName = visitorData?.contactName || "User";
 
-    // ✅ Encode visitorData as a base64 string (safe for URL)
+    const dataToEncode = {
+      userId,          // add userId
+      ...visitorData   // merge the rest of the visitorData
+    };
+
     const encodedData = encodeURIComponent(
-      Buffer.from(JSON.stringify(visitorData)).toString("base64")
+      Buffer.from(JSON.stringify(dataToEncode)).toString("base64")
     );
 
-    // ✅ Build link with encoded data
     const resumeUrl = `https://www.globalbizreport.com/email-checkout?data=${encodedData}`;
+
 
 
     // ✅ Updated Email Template
@@ -57,7 +61,7 @@ export const sendAbandonedCheckoutEmail = async (userId, visitorData) => {
 
     // ✅ Send the email
     await transporter.sendMail(mailOptions);
-    console.log(`📧 Reminder email successfully sent to: ${recipientEmail}`);
+    // console.log(`📧 Reminder email successfully sent to: ${recipientEmail}`);
   } catch (error) {
     console.error("🚨 Error sending abandoned checkout email:", error.message);
   }

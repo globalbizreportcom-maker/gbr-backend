@@ -1,13 +1,14 @@
 import express from "express";
 import bcrypt from "bcryptjs";
 import User from "../models/User.js"; // import the mongoose model
+import jwt from "jsonwebtoken";
 
 const registrationRouter = express.Router();
 
 // POST /register
 registrationRouter.post("/form-submit", async (req, res) => {
     try {
-        const { name, email, phone, country, password, company } = req.body;
+        const { name, email, phone, country, password, company, gst } = req.body;
 
         // 1. Validate input
         if (!name || !email || !country) {
@@ -38,13 +39,33 @@ registrationRouter.post("/form-submit", async (req, res) => {
             country,
             password: hashedPassword,
             company,
+            gstin: gst || ''
         });
 
         await newUser.save();
 
-        res.status(201).json({ success: true, message: "User registered successfully" });
+        // 5️⃣ Generate JWT token
+        const token = jwt.sign(
+            { email: newUser.email, id: newUser._id },
+            process.env.JWT_SECRET,
+            { expiresIn: "30d" }
+        );
+
+        // 6️⃣ Set HTTP-only cookie
+        res.cookie("gbr_user", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        });
+
+        // 7️⃣ Respond success
+        res.status(201).json({
+            success: true,
+            message: "User registered successfully",
+            newUser,
+        });
     } catch (error) {
-        console.error("❌ Registration error:", error);
         res.status(500).json({ success: false, message: "Internal server error" });
     }
 });

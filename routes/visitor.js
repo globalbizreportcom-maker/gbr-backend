@@ -13,7 +13,6 @@ const visitorsRouter = express.Router();
 visitorsRouter.post("/payments", async (req, res) => {
     try {
         const { userId, ...formData } = req.body;
-
         if (!userId) {
             return res.status(400).json({ error: "User ID is required" });
         }
@@ -22,6 +21,7 @@ visitorsRouter.post("/payments", async (req, res) => {
             ...formData, user: userId,
             paymentAmount: formData.paymentAmount,
             currency: formData.currency,
+            contactCountry: formData.contactCountry?.label || formData.contactCountry
         });
         await visitor.save();
 
@@ -100,129 +100,67 @@ visitorsRouter.get("/payments", async (req, res) => {
 
 visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
     try {
+
         // 1️⃣ Load all report requests
         const reportRequests = await ReportRequest.find(
             {},
             "targetCompany requesterInfo createdAt"
-        );
+        ).lean(); // ⚡ faster plain JS objects
 
-        // 2️⃣ Load all payment visitors with user populated
+        // 2️⃣ Load all payment visitors
         const visitors = await paymentVisitor
             .find()
             .populate("user", "name email phone country company createdAt")
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
 
-        const normalize = (str) => str?.toLowerCase().trim() || "";
+        // Normalize helper
+        const normalize = (str) =>
+            typeof str === "string" ? str.toLowerCase().trim() : "";
 
-        // Utility: compare only the date (YYYY-MM-DD)
-        const isSameDate = (date1, date2) => {
-            const d1 = new Date(date1);
-            const d2 = new Date(date2);
-            return (
-                d1.getFullYear() === d2.getFullYear() &&
-                d1.getMonth() === d2.getMonth() &&
-                d1.getDate() === d2.getDate()
-            );
+        // Extract only date (YYYY-MM-DD)
+        const dateKey = (date) => {
+            if (!date) return "";
+            const d = new Date(date);
+            return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
         };
 
-        // 3️⃣ Comparison logic
-        const abandonedVisitors = visitors.filter((visitor) => {
-            const companyDetails = {
-                name: normalize(visitor.companyName),
-                address: normalize(visitor.address),
-                city: normalize(visitor.city),
-                state: normalize(visitor.state),
-                country: normalize(visitor.country),
-                postalCode: normalize(visitor.postalCode),
-                phone: normalize(visitor.telephone),
-                website: normalize(visitor.website),
-            };
+        // 3️⃣ Build a lookup map for fast matching
+        const reportMap = new Map();
 
-            const contactDetails = {
-                name: normalize(visitor.contactName),
-                email: normalize(visitor.contactEmail),
-                phone: normalize(visitor.contactPhone),
-                optionalEmail: normalize(visitor.optionalEmail),
-                company: normalize(visitor.contactCompany),
-                website: normalize(visitor.website),
-                country: normalize(visitor.contactCountry),
-            };
+        for (const req of reportRequests) {
+            const key = [
+                normalize(req.targetCompany?.name),
+                normalize(req.targetCompany?.address),
+                normalize(req.requesterInfo?.country),
+                normalize(req.requesterInfo?.email),
+                normalize(req.requesterInfo?.phone),
+                normalize(req.requesterInfo?.company),
+                dateKey(req.createdAt),
+            ].join("|");
+            reportMap.set(key, true);
+        }
 
-            let matchedRequest = null;
 
-            const isMatched = reportRequests.some((req) => {
-                const target = {
-                    name: normalize(req.targetCompany?.name),
-                    address: normalize(req.targetCompany?.address),
-                    city: normalize(req.targetCompany?.city),
-                    state: normalize(req.targetCompany?.state),
-                    country: normalize(req.targetCompany?.country),
-                    postalCode: normalize(req.targetCompany?.postalCode),
-                    phone: normalize(req.targetCompany?.phone),
-                    website: normalize(req.targetCompany?.website),
-                };
+        // 4️⃣ Compare each visitor against the map
+        const abandonedVisitors = [];
+        for (const visitor of visitors) {
+            const key = [
+                normalize(visitor.companyName),
+                normalize(visitor.address),
+                normalize(visitor.contactCountry),
+                normalize(visitor.contactEmail),
+                normalize(visitor.contactPhone),
+                normalize(visitor.contactCompany),
+                dateKey(visitor.createdAt),
+            ].join("|");
 
-                const requester = {
-                    name: normalize(req.requesterInfo?.name),
-                    email: normalize(req.requesterInfo?.email),
-                    phone: normalize(req.requesterInfo?.phone),
-                    optionalEmail: normalize(req.requesterInfo?.optionalEmail),
-                    company: normalize(req.requesterInfo?.company),
-                    website: normalize(req.requesterInfo?.website),
-                    country: normalize(req.requesterInfo?.country),
-                };
+            if (!reportMap.has(key)) {
+                abandonedVisitors.push(visitor);
+            }
+        }
 
-                // 🔍 Match both company and requester
-                const companyMatch =
-                    companyDetails.name === target.name &&
-                    companyDetails.address === target.address &&
-                    companyDetails.country === target.country;
-
-                const requesterMatch =
-                    (contactDetails.email === requester.email ||
-                        contactDetails.phone === requester.phone ||
-                        contactDetails.company === requester.company) &&
-                    contactDetails.country === requester.country;
-
-                // 🗓️ Match only if both created on same date
-                const dateMatch = isSameDate(req.createdAt, visitor.createdAt);
-
-                if (companyMatch && requesterMatch
-                    && dateMatch
-                ) {
-                    matchedRequest = {
-                        visitorCompany: companyDetails.name,
-                        visitorEmail: contactDetails.email,
-                        matchedCompany: target.name,
-                        matchedRequesterEmail: requester.email,
-                        requestDate: req.createdAt,
-                        visitorDate: visitor.createdAt,
-                    };
-                    return true;
-                }
-
-                return false;
-            });
-
-            // Debug logs
-            // if (isMatched) {
-            //     console.log("✅ SAME-DATE MATCH FOUND:", {
-            //         company: companyDetails.name,
-            //         email: contactDetails.email,
-            //         visitorDate: visitor.createdAt,
-            //     });
-            // } else {
-            //     console.log("❌ NO SAME-DATE MATCH:", {
-            //         company: companyDetails.name,
-            //         email: contactDetails.email,
-            //         visitorDate: visitor.createdAt,
-            //     });
-            // }
-
-            return !isMatched; // keep only non-matching (abandoned) visitors
-        });
-
-        // 4️⃣ Response
+        // 5️⃣ Send Response
         res.status(200).json({
             success: true,
             count: abandonedVisitors.length,
@@ -236,138 +174,6 @@ visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
         });
     }
 });
-
-
-// visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
-//     try {
-//         // 1️⃣ Load all report requests
-//         const reportRequests = await ReportRequest.find(
-//             {},
-//             "targetCompany requesterInfo createdAt"
-//         );
-
-//         // 2️⃣ Load all payment visitors with user populated
-//         const visitors = await paymentVisitor
-//             .find()
-//             .populate("user", "name email phone country company createdAt")
-//             .sort({ createdAt: -1 });
-
-//         const normalize = (str) => str?.toLowerCase().trim() || "";
-
-//         // 3️⃣ Comparison logic
-//         const abandonedVisitors = visitors.filter((visitor) => {
-//             const companyDetails = {
-//                 name: normalize(visitor.companyName),
-//                 address: normalize(visitor.address),
-//                 city: normalize(visitor.city),
-//                 state: normalize(visitor.state),
-//                 country: normalize(visitor.country),
-//                 postalCode: normalize(visitor.postalCode),
-//                 phone: normalize(visitor.telephone),
-//                 website: normalize(visitor.website),
-//             };
-
-//             const contactDetails = {
-//                 name: normalize(visitor.contactName),
-//                 email: normalize(visitor.contactEmail),
-//                 phone: normalize(visitor.contactPhone),
-//                 optionalEmail: normalize(visitor.optionalEmail),
-//                 company: normalize(visitor.contactCompany),
-//                 website: normalize(visitor.website),
-//                 country: normalize(visitor.contactCountry),
-//             };
-
-//             let matchedRequest = null;
-
-//             const isMatched = reportRequests.some((req) => {
-//                 const target = {
-//                     name: normalize(req.targetCompany?.name),
-//                     address: normalize(req.targetCompany?.address),
-//                     city: normalize(req.targetCompany?.city),
-//                     state: normalize(req.targetCompany?.state),
-//                     country: normalize(req.targetCompany?.country),
-//                     postalCode: normalize(req.targetCompany?.postalCode),
-//                     phone: normalize(req.targetCompany?.phone),
-//                     website: normalize(req.targetCompany?.website),
-//                 };
-
-//                 const requester = {
-//                     name: normalize(req.requesterInfo?.name),
-//                     email: normalize(req.requesterInfo?.email),
-//                     phone: normalize(req.requesterInfo?.phone),
-//                     optionalEmail: normalize(req.requesterInfo?.optionalEmail),
-//                     company: normalize(req.requesterInfo?.company),
-//                     website: normalize(req.requesterInfo?.website),
-//                     country: normalize(req.requesterInfo?.country),
-//                 };
-
-//                 // 🔍 Match both company and requester sections
-//                 const companyMatch =
-//                     companyDetails.name === target.name &&
-//                     companyDetails.address === target.address &&
-//                     companyDetails.country === target.country;
-
-//                 const requesterMatch =
-//                     (contactDetails.email === requester.email ||
-//                         contactDetails.phone === requester.phone ||
-//                         contactDetails.company === requester.company) &&
-//                     contactDetails.country === requester.country;
-
-//                 if (companyMatch && requesterMatch) {
-//                     matchedRequest = {
-//                         visitorCompany: companyDetails.name,
-//                         visitorEmail: contactDetails.email,
-//                         matchedCompany: target.name,
-//                         matchedRequesterEmail: requester.email,
-//                     };
-//                     return true;
-//                 }
-
-//                 return false;
-//             });
-
-//             // 🪵 Debug logs
-//             if (isMatched) {
-//                 console.log("✅ MATCH FOUND:");
-//                 console.log("Visitor:", {
-//                     company: companyDetails.name,
-//                     email: contactDetails.email,
-//                     phone: contactDetails.phone,
-//                     address: companyDetails.address,
-//                     country: companyDetails.country,
-//                 });
-//                 console.log("Matched With:", matchedRequest);
-//                 console.log("----------------------------------------------------");
-//             } else {
-//                 console.log("❌ NO MATCH:");
-//                 console.log("Visitor:", {
-//                     company: companyDetails.name,
-//                     email: contactDetails.email,
-//                     phone: contactDetails.phone,
-//                     address: companyDetails.address,
-//                     country: companyDetails.country,
-//                 });
-//                 console.log("----------------------------------------------------");
-//             }
-
-//             return !isMatched;
-//         });
-
-//         // 4️⃣ Response
-//         res.status(200).json({
-//             success: true,
-//             count: abandonedVisitors.length,
-//             visitors: abandonedVisitors,
-//         });
-//     } catch (error) {
-//         console.error("🚨 Abandoned checkout detection error:", error);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal server error",
-//         });
-//     }
-// });
-
 
 
 

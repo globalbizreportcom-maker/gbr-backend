@@ -22,7 +22,6 @@ loginRouter.post("/send-otp", async (req, res) => {
 
         // Save OTP (with expiry 5 minutes)
         otpStore.set(email, { otp, expires: Date.now() + 5 * 60 * 1000 });
-        console.log(otp);
         // Send email
         await transporter.sendMail({
             from: "Global Biz Report<no-reply@globalbizreport.com>",
@@ -33,7 +32,6 @@ loginRouter.post("/send-otp", async (req, res) => {
 
         res.json({ success: true, message: "OTP sent successfully" });
     } catch (error) {
-        console.log("❌ OTP Send Error:", error);
         res.status(500).json({ success: false, message: "Failed to send OTP" });
     }
 });
@@ -96,7 +94,6 @@ loginRouter.post("/verify-otp", async (req, res) => {
         });
 
     } catch (err) {
-        console.log("Verify OTP error:", err);
         return res.status(500).json({ success: false, message: "Server error" });
     }
 });

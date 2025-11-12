@@ -149,7 +149,6 @@ async function updateReportStatus(id, status) {
 
         return { success: true, report };
     } catch (error) {
-        console.log("Error updating report status:", error);
         return { success: false, message: "Server error" };
     }
 }
@@ -296,7 +295,6 @@ adminRouter.post("/report-files/upload", upload.single("file"), async (req, res)
 
         res.json({ success: true, file: newFile });
     } catch (error) {
-        console.log("Error uploading file:", error);
         res.status(500).json({ success: false, message: "Upload failed" });
     }
 });
@@ -368,6 +366,21 @@ adminRouter.post("/contacts/thread/:email/reply", async (req, res) => {
         contact.messages.push({ sender: "admin", message });
         await contact.save();
 
+        // 🔹 Compose email
+        const mailOptions = {
+            from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
+            to: email,
+            subject: "Reply from GlobalBizReport",
+            html: `
+                <p>Hello ${contact.fullName},</p>
+                <blockquote style="border-left:2px solid #ccc; padding-left:10px;">${message}</blockquote>
+                <p>Thank you for contacting us!</p>
+            `,
+        };
+
+        // 🔹 Send email
+        await transporter.sendMail(mailOptions);
+
         res.status(200).json({ success: true });
     } catch (err) {
         res.status(500).json({ message: err.message });
@@ -381,7 +394,6 @@ async function getCompanyCountByState(state) {
 
     try {
         const count = await Company.countDocuments({ CompanyStateCode: state });
-        console.log(`Total companies in ${state}: ${count}`);
         return count;
     } catch (err) {
         console.error("Error fetching company count:", err);
@@ -396,7 +408,6 @@ async function viewLastDocument() {
     try {
         // Sort by creation time descending and get the last inserted document
         const lastDoc = await Company.findOne().sort({ createdAt: -1 });
-        console.log("Last document:", lastDoc);
     } catch (err) {
         console.error(err);
     }
@@ -407,7 +418,6 @@ async function viewLastDocument() {
 async function deleteAndhraPradeshCompanies() {
     try {
         const result = await Company.deleteMany({ CompanyStateCode: { $regex: /^Andhra Pradesh$/i } });
-        console.log(`Deleted ${result.deletedCount} companies from Andhra Pradesh`);
     } catch (err) {
         console.error("Error deleting companies:", err);
     }

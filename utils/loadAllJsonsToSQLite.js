@@ -13,7 +13,6 @@ export const loadAllJsonsToSQLite = (dataDir = "./data", dbPath = "./sqldb/compa
     }
 
     const files = fs.readdirSync(dataDir).filter(f => f.endsWith(".json"));
-    console.log(`Found ${files.length} JSON files in ${dataDir}`);
 
     const db = new Database(dbPath);
     db.pragma("journal_mode = WAL");
@@ -83,12 +82,9 @@ export const loadAllJsonsToSQLite = (dataDir = "./data", dbPath = "./sqldb/compa
     let totalCount = 0;
     for (const file of files) {
       const filePath = path.join(dataDir, file);
-      console.log(`\n➡️ Processing: ${file}`);
       const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
-      console.log(`📄 Loaded ${data.length} records from JSON`);
       transaction(data);
       totalCount += data.length;
-      console.log(`✅ Inserted ${data.length} records into DB`);
     }
 
     // ------------------ Create FTS table ------------------
@@ -108,9 +104,6 @@ export const loadAllJsonsToSQLite = (dataDir = "./data", dbPath = "./sqldb/compa
       FROM companies
       WHERE rowid > (SELECT IFNULL(MAX(rowid), 0) FROM companies_fts)
     `).run();
-
-    console.log(`\n⚡ FTS index created`);
-    console.log(`\n✅ Total records inserted from all JSON files: ${totalCount}`);
 
     db.close();
   } catch (err) {

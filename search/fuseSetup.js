@@ -63,11 +63,9 @@ import path from "path";
 import Fuse from "fuse.js";
 
 export function getFuseForState(query, state) {
-    console.log("🔥 getFuseForState called with:", { state, query });
 
     const dataDir = path.resolve("./data");
     const files = fs.readdirSync(dataDir).filter((f) => f.endsWith(".json"));
-    console.log("📂 Available files:", files.length);
 
     let results = [];
 
@@ -79,7 +77,6 @@ export function getFuseForState(query, state) {
             .replace(/&/g, "and")   // Handle names like "Daman & Diu"
             .replace(/[^a-z_]/g, ""); // Remove symbols
 
-        console.log("🧠 normalizedState:", normalizedState);
 
         // Try to find exact or closest file
         const fuseStates = new Fuse(files, {
@@ -88,11 +85,8 @@ export function getFuseForState(query, state) {
         });
 
         const result = fuseStates.search(normalizedState);
-        console.log("🔍 fuseStates result:", result);
 
         const matchedFile = result[0]?.item;
-
-        console.log("🎯 matchedFile:", matchedFile);
 
         if (!matchedFile) {
             console.error(`❌ No data found for state: ${state}`);
@@ -101,7 +95,6 @@ export function getFuseForState(query, state) {
 
         // ✅ Ensure full path
         const filePath = path.join(dataDir, matchedFile);
-        console.log("📄 Reading file:", filePath);
 
         const fileData = JSON.parse(fs.readFileSync(filePath, "utf8"));
 
@@ -113,7 +106,6 @@ export function getFuseForState(query, state) {
 
         results = fuse.search(query).map((r) => r.item);
     } else {
-        console.log("🌍 No state provided — scanning all files");
         const sortedFiles = files.sort((a, b) => a.localeCompare(b));
 
         for (const file of sortedFiles) {
@@ -125,13 +117,11 @@ export function getFuseForState(query, state) {
             });
             const matched = fuse.search(query).map((r) => r.item);
             if (matched.length) {
-                console.log(`✅ Found ${matched.length} matches in ${file}`);
                 results.push(...matched);
             }
         }
     }
 
-    console.log("📊 Total results found:", results.length);
     return results;
 }
 

@@ -109,7 +109,6 @@ agenda.define("send abandoned checkout email", async (job) => {
         // 4️⃣ If not matched → send draft order email
         if (!isAlreadyRequested) {
             await sendAbandonedCheckoutEmail(userId, visitorData);
-            // console.log("📧 Draft order email sent to:", contactDetails.email);
         } else {
             console.log("🟢 Matching report request found, skipping email.");
         }

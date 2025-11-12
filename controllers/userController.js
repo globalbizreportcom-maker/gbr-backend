@@ -1,7 +1,9 @@
 // backend/controllers/userController.js
 
+import mongoose from "mongoose";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 export const checkOrCreateUser = async (req, res) => {
     try {
@@ -20,14 +22,28 @@ export const checkOrCreateUser = async (req, res) => {
         user = await User.create({
             name,
             email,
-            country: country.label,
+            country: country,
             phone: phone || "",
             company: company || "",
         });
 
+        // 🔑 Create JWT token
+        const token = jwt.sign(
+            { email: user.email, id: user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: "30d" } // adjust as needed
+        );
+
+        // 🔒 Set HTTP-only cookie
+        res.cookie("gbr_user", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+        });
+
         return res.status(201).json({ exists: false, message: "New user created", user });
     } catch (error) {
-        console.log("❌ Error in checkOrCreateUser:", error);
         res.status(500).json({ error: "Server error" });
     }
 };
@@ -35,7 +51,7 @@ export const checkOrCreateUser = async (req, res) => {
 export const addPassword = async (req, res) => {
     try {
         const { userId, password } = req.body;
-        console.log(userId, password);
+
         if (!userId || !password) {
             return res.status(400).json({ message: "User ID and password are required" });
         }

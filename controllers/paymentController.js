@@ -89,60 +89,28 @@ async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportReq
     }
 }
 
-// async function sendPaymentCancelledEmail(recipientEmail, recipientName, orderId) {
-//     try {
-//         const mailOptions = {
-//             from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
-//             to: recipientEmail,
-//             subject: "Complete Your Order – GlobalBizReport.com",
-//             html: `
-//                 <p>Dear ${recipientName || 'User'},</p>
-
-//                 <p>Thank you for your interest to inquire for a Freshly Investigated Credit Report from www.GlobalBizReport.com (GBR). We want to assure you that you made the right choice. GBR is one of the most reliable business services platforms providing Freshly Investigated Business Credit Reports to Corporates, SMEs, B2B Marketplaces, Financial Institutes, Global Consultancy & Market Research companies worldwide.</p>
-
-//                 <p>We noticed that you couldn't complete the transaction due to some technical problem. We are sorry for the inconvenience. But no worries!</p>
-
-//                 <p>In order to save your time, we give below a link to continue from where you left.</p>
-
-//                 <p><a href="https://www.GlobalBizReport.com/order-business-credit-report" style="display:inline-block;padding:10px 20px;background:#FF6600;color:#fff;text-decoration:none;border-radius:5px;">Click here to Complete Your Order</a></p>
-
-//                 <p>GBR offers its service in over 220+ countries and GBR Credit Reports gives you full picture of company's reliability, registration data, financial health, credit worthiness check, credit rating score, Directors Info, details on any Negative information and much more.</p>
-
-//                 <p>Once again thank you for your interest in considering GlobalBizReport as your Credit Reporting Partner. We look forward to receiving your order and to serving you for your future credit reporting needs.</p>
-
-//                 <p>For any queries, please feel free to contact us at <a href="mailto:support@globalbizreport.com">support@globalbizreport.com</a></p>
-
-//                 <p>Regards,<br/>
-//                 Team - GBR </p>
-
-//                 <p><em>Click here in case you want to view a sample report. Please note that the contents of the report like financial statements etc. are subject to availability depending on the local government policies and corporate information disclosure of the subject/country.</em></p>
-//             `,
-//         };
-
-//         await transporter.sendMail(mailOptions);
-//     } catch (err) {
-//         console.error("Error sending payment cancelled email:", err);
-//     }
-// }
-
 
 export const sendPaymentCancelledEmail = async (userId, visitorData) => {
     try {
         // ✅ Validate essential data
         if (!visitorData?.contactEmail) {
-            console.log("❌ Missing contactEmail for user:", userId);
+            // console.log(" Missing contactEmail for user:", userId);
             return;
         }
 
         const recipientEmail = visitorData.contactEmail;
         const recipientName = visitorData?.contactName || "User";
 
-        // ✅ Encode visitorData as a base64 string (safe for URL)
+        const dataToEncode = {
+            userId: userId,          // add userId
+            ...visitorData   // merge the rest of the visitorData
+        };
+
+        // console.log(userId);
         const encodedData = encodeURIComponent(
-            Buffer.from(JSON.stringify(visitorData)).toString("base64")
+            Buffer.from(JSON.stringify(dataToEncode)).toString("base64")
         );
 
-        // ✅ Build link with encoded data
         const resumeUrl = `https://www.globalbizreport.com/email-checkout?data=${encodedData}`;
 
 
@@ -222,6 +190,7 @@ export const createOrder = async (req, res) => {
             },
             agreementAccepted: formData.agreedToTerms || false,
         };
+
         const reportRequest = await ReportRequest.create(reportRequestData);
 
         // // 🕒 Schedule abandoned checkout reminder
@@ -458,6 +427,7 @@ const client = new paypal.core.PayPalHttpClient(environment);
 export const createPaypalOrder = async (req, res) => {
     try {
         const { userId, formData } = req.body;
+
         if (!formData || !userId) return res.status(400).json({ error: "Missing required fields" });
 
         // 1️⃣ Save ReportRequest in DB
@@ -484,6 +454,7 @@ export const createPaypalOrder = async (req, res) => {
             },
             agreementAccepted: formData.agreedToTerms || false,
         };
+
         const reportRequest = await ReportRequest.create(reportRequestData);
 
         // 2️⃣ Pricing maps
@@ -575,7 +546,6 @@ export const createPaypalOrder = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("createPaypalOrder error:", error);
         res.status(500).json({ error: "Failed to create PayPal order" });
     }
 };
@@ -631,6 +601,8 @@ export const handlePaymentCancelled = async (req, res) => {
     try {
         const { userId, orderId, data } = req.body;
 
+        console.log(userId, orderId,);
+
         if (!orderId) {
             return res.status(400).json({ success: false, message: "Missing orderId" });
         }
@@ -660,7 +632,7 @@ export const handlePaymentCancelled = async (req, res) => {
 
         // 🔹 Step 3: Prepare email data
         const emailData = {
-            user: userId,
+            user: payment?.user?._id,
             companyName: targetCompany?.name || "",
             address: targetCompany?.address || "",
             city: targetCompany?.city || "",
@@ -683,7 +655,7 @@ export const handlePaymentCancelled = async (req, res) => {
         if (user?.email) {
             await sendPaymentCancelledEmail(userId, emailData);
         } else {
-            console.log("⚠️ No user email found for cancellation:", userId);
+            console.log(" No user email found for cancellation:", userId);
         }
 
         res.json({ success: true, message: "Cancellation processed" });
@@ -692,46 +664,3 @@ export const handlePaymentCancelled = async (req, res) => {
     }
 };
 
-
-// export const handlePaymentCancelled = async (req, res) => {
-//     try {
-//         const { userId, orderId, data } = req.body;
-//         if (!orderId) {
-//             return res.status(400).json({ success: false, message: "Missing orderId" });
-//         }
-
-//         // Mark payment as cancelled
-//         const payment = await Payment.findOneAndUpdate(
-//             { orderId },
-//             { status: 'cancelled', cancelledAt: new Date() },
-//             { new: true }
-//         );
-
-
-//         if (!payment) {
-//             return res.status(404).json({ success: false, message: "Payment record not found" });
-//         }
-
-//         // Fetch related report request
-//         const reportRequest = await ReportRequest.findById(payment.reportRequest);
-
-//         // 🔹 Fetch user email using the 'user' field in Payment
-//         const user = await User.findById(payment.user).select("email name");
-
-//         if (!user?.email) {
-//             console.warn("⚠️ No user email found for cancellation:", payment.user);
-//         } else {
-//             // 🔹 Send cancellation email
-//             await sendPaymentCancelledEmail(user.email, user.name, {
-//                 reportRequest,
-//                 orderId,
-//                 userName: user.name || "User",
-//             });
-//         }
-
-//         res.json({ success: true, message: 'Cancellation processed' });
-//     } catch (error) {
-//         console.error(error);
-//         res.status(500).json({ error: 'Failed to process cancellation' });
-//     }
-// };
