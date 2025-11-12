@@ -400,6 +400,77 @@ app.get("/api/companies", (req, res) => {
     }
 });
 
+
+// Optional rate limiter
+const fastLimiter = rateLimit({
+    windowMs: 60 * 1000, // 1 min
+    max: 30,
+    message: "Too many requests, slow down!"
+});
+
+// GET /companies-fast
+app.get("/companies-fast", fastLimiter, (req, res) => {
+    try {
+        const { page = 1, company = "", alphabet, state, industry, companyType, status } = req.query;
+
+        const perPage = 20;
+        const offset = (page - 1) * perPage;
+
+        // Build filters dynamically
+        const filters = [];
+        const params = [];
+
+        if (company) {
+            filters.push("CompanyName LIKE ?");
+            params.push(`%${company}%`);
+        }
+        if (alphabet) {
+            filters.push("CompanyName LIKE ?");
+            params.push(`${alphabet}%`);
+        }
+        if (state) {
+            filters.push("CompanyStateCode = ?");
+            params.push(state);
+        }
+        if (industry) {
+            filters.push("Industry = ?");
+            params.push(industry);
+        }
+        if (companyType) {
+            filters.push("CompanyType = ?");
+            params.push(companyType);
+        }
+        if (status) {
+            filters.push("CompanyStatus = ?");
+            params.push(status);
+        }
+
+        const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+
+        // ✅ Total count for pagination
+        const total = db.prepare(`SELECT COUNT(*) AS total FROM companies ${whereClause}`).get(...params).total;
+
+        // ✅ Paginated data
+        const rows = db.prepare(`SELECT * FROM companies ${whereClause} ORDER BY CompanyName ASC LIMIT ? OFFSET ?`)
+            .all(...params, perPage, offset);
+
+        const totalPages = Math.ceil(total / perPage);
+
+        res.json({
+            rows,
+            totalPages,
+            totalResults: total,
+            page: Number(page),
+            perPage
+        });
+    } catch (err) {
+        console.error("Error fetching fast companies:", err);
+        res.status(500).json({ rows: [], totalPages: 0, totalResults: 0, error: "Fetch failed" });
+    }
+});
+
+
+
 // ✅ Optional limiter (protect this endpoint from abuse)
 const companiesLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
@@ -409,11 +480,11 @@ const companiesLimiter = rateLimit({
 
 // ✅ Safe route handler
 // ✅ Optimized & safe route handler
+// ✅ Optimized & safe route handler using old working column names
 app.get("/companies-directory", companiesLimiter, (req, res) => {
     try {
         let {
             company = "",
-            country = "",
             state = "",
             industry = "",
             companyType = "",
@@ -426,7 +497,6 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
         // ✅ Input sanitization
         perPage = Math.min(100, parseInt(perPage) || 20); // max 100
         company = company.trim();
-        country = country.trim().toLowerCase();
         state = state.trim().toLowerCase();
         industry = industry.trim();
         companyType = companyType.trim();
@@ -445,10 +515,6 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
             whereClauses.push("CompanyName LIKE @alphabet");
             params.alphabet = `${alphabet}%`;
         }
-        if (country) {
-            whereClauses.push("LOWER(TRIM(Country)) = @country");
-            params.country = country;
-        }
         if (state) {
             whereClauses.push("LOWER(TRIM(CompanyStateCode)) = @state");
             params.state = state;
@@ -466,7 +532,7 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
             params.status = status;
         }
 
-        // ✅ Keyset pagination (using rowid)
+        // ✅ Keyset pagination (rowid)
         if (cursor) {
             whereClauses.push("rowid > @cursor");
             params.cursor = parseInt(cursor);
@@ -476,7 +542,7 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
 
         // ✅ Select only essential columns (lighter payload)
         const dataStmt = db.prepare(`
-            SELECT rowid, CIN, CompanyName, Country, CompanyStateCode, CompanyStatus, CompanyClass
+            SELECT rowid, CIN, CompanyName, CompanyStateCode, CompanyStatus, CompanyClass, Registered_Office_Address
             FROM companies
             ${whereSQL}
             ORDER BY rowid ASC
@@ -485,7 +551,7 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
 
         const rows = dataStmt.all({ ...params, perPage });
 
-        // ✅ Determine next cursor
+        // ✅ Determine next cursor for client-side keyset pagination
         const nextCursor = rows.length ? rows[rows.length - 1].rowid : null;
 
         res.status(200).json({
@@ -494,6 +560,7 @@ app.get("/companies-directory", companiesLimiter, (req, res) => {
             rows,
             nextCursor, // client can use this for next page
         });
+
     } catch (err) {
         console.error("Error in /companies-directory:", err);
         res.status(500).json({ error: "Server error. Please try again later." });
