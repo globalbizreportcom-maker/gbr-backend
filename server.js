@@ -159,7 +159,7 @@ const upload = multer({ dest: "uploads/" });
 
 // base api 
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully ***" });
+    res.json({ message: "Backend connected successfully *_*" });
 });
 
 app.get("/companies-meta", metaLimiter, (req, res) => {
