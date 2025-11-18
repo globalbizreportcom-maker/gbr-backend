@@ -18,7 +18,8 @@ visitorsRouter.post("/payments", async (req, res) => {
         }
 
         const visitor = new paymentVisitor({
-            ...formData, user: userId,
+            ...formData,
+            user: userId,
             paymentAmount: formData.paymentAmount,
             currency: formData.currency,
             contactCountry: formData.contactCountry?.label || formData.contactCountry,
@@ -105,7 +106,7 @@ visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
         // 1️⃣ Load all report requests
         const reportRequests = await ReportRequest.find(
             {},
-            "targetCompany requesterInfo createdAt"
+            "companyType targetCompany requesterInfo createdAt"
         ).lean(); // ⚡ faster plain JS objects
 
         // 2️⃣ Load all payment visitors

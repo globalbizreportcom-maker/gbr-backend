@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 const ReportRequestSchema = new mongoose.Schema({
+    companyType: { type: String, required: false, },
     targetCompany: {
         name: { type: String, required: true },
         address: String,

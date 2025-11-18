@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 
 const paymentVisitorSchema = new mongoose.Schema(
     {
+        companyType: String,
         companyName: String,
         address: String,
         city: String,

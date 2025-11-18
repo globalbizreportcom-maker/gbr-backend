@@ -168,6 +168,7 @@ export const createOrder = async (req, res) => {
 
         // 1️⃣ Save ReportRequest
         const reportRequestData = {
+            companyType: formData.companyType,
             targetCompany: {
                 name: formData.companyName,
                 address: formData.address,
@@ -433,6 +434,7 @@ export const createPaypalOrder = async (req, res) => {
 
         // 1️⃣ Save ReportRequest in DB
         const reportRequestData = {
+            companyType: formData.companyType,
             targetCompany: {
                 name: formData.companyName,
                 address: formData.address,
