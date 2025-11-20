@@ -203,33 +203,33 @@ export const createOrder = async (req, res) => {
 
         // 2️⃣ Pricing maps
         const pricingINR = {
-            India: 4720,
-            China: 7670,
-            "Asia (excluding India & China)": 7670,
-            USA: 7080,
-            Canada: 7080,
-            Europe: 7670,
-            "Middle East": 7670,
-            "Australia & New Zealand": 8850,
-            Africa: 8260,
-            Oceania: 8850,
-            "Latin America": 9440,
-            "Other Countries": 9440,
+            India: 4915,
+            China: 7924,
+            "Asia (excluding India & China)": 7924,
+            USA: 5918,
+            Canada: 5918,
+            Europe: 6921,
+            "Middle East": 6921,
+            "Australia & New Zealand": 8927,
+            Africa: 7924,
+            Oceania: 8927,
+            "Latin America": 8927,
+            "Other Countries": 8927,
         };
 
         const pricingUSD = {
             India: 49,
             China: 79,
             "Asia (excluding India & China)": 79,
-            USA: 69,
-            Canada: 69,
-            Europe: 79,
-            "Middle East": 79,
+            USA: 59,
+            Canada: 59,
+            Europe: 69,
+            "Middle East": 69,
             "Australia & New Zealand": 89,
-            Africa: 89,
+            Africa: 79,
             Oceania: 89,
-            "Latin America": 99,
-            "Other Countries": 99,
+            "Latin America": 89,
+            "Other Countries": 89,
         };
 
         // 3️⃣ Region detection (frontend logic exactly)
@@ -494,20 +494,34 @@ export const createPaypalOrder = async (req, res) => {
 
         const reportRequest = await ReportRequest.create(reportRequestData);
 
-        // 2️⃣ Pricing maps
+        const pricingINR = {
+            India: 4915,
+            China: 7924,
+            "Asia (excluding India & China)": 7924,
+            USA: 5918,
+            Canada: 5918,
+            Europe: 6921,
+            "Middle East": 6921,
+            "Australia & New Zealand": 8927,
+            Africa: 7924,
+            Oceania: 8927,
+            "Latin America": 8927,
+            "Other Countries": 8927,
+        };
+
         const pricingUSD = {
             India: 49,
             China: 79,
             "Asia (excluding India & China)": 79,
-            USA: 69,
-            Canada: 69,
-            Europe: 79,
-            "Middle East": 79,
+            USA: 59,
+            Canada: 59,
+            Europe: 69,
+            "Middle East": 69,
             "Australia & New Zealand": 89,
-            Africa: 89,
+            Africa: 79,
             Oceania: 89,
-            "Latin America": 99,
-            "Other Countries": 99,
+            "Latin America": 89,
+            "Other Countries": 89,
         };
 
         // 3️⃣ Asian countries list
