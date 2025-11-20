@@ -239,16 +239,48 @@ export const createOrder = async (req, res) => {
 
         const getRegion = (country) => {
             const asiaExcludingIndiaChina = [
-                "Japan", "South Korea", "Singapore", "Thailand", "Malaysia", "Indonesia",
-                "Philippines", "Vietnam", "Nepal", "Sri Lanka", "Bangladesh", "Pakistan",
-                "Myanmar", "Bhutan", "Cambodia", "Laos", "Brunei", "Maldives"
+                "Afghanistan", "Bangladesh", "Bhutan", "Brunei Darussalam", "Burma",
+                "Cambodia", "East Timor", "Hong Kong", "Indonesia", "Japan", "Kazakhistan",
+                "Korea (North)", "Korea (South)", "Kyrgyzstan", "Laos", "Malaysia", "Maldives",
+                "Mongolia", "Nepal", "Pakistan", "Philippines", "Russia", "Russian Federation",
+                "Singapore", "Sri Lanka", "Tadjikistan", "Taiwan", "Thailand", "Turkmenistan",
+                "Uzbekistan", "Vietnam"
             ].map(normalize);
 
             const australiaNZ = ["Australia", "New Zealand"].map(normalize);
-            const middleEast = ["UAE", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman"].map(normalize);
+            const middleEast = [
+                "Abu Dhabi", "Bahrain", "Dubai", "Iran", "Iraq", "Israel", "Jordan",
+                "Kuwait", "Lebanon", "Oman", "Qatar", "Saudi Arabia", "Syria", "Turkey",
+                "Turkmenistan", "UAE (United Arab Emirates)", "Yemen"
+            ].map(normalize);
             const latinAmerica = ["Brazil", "Mexico", "Argentina", "Colombia", "Chile", "Peru"].map(normalize);
-            const africa = ["South Africa", "Nigeria", "Egypt", "Kenya", "Morocco", "Ethiopia"].map(normalize);
-            const oceania = ["Fiji", "Papua New Guinea", "Samoa", "Tonga"].map(normalize);
+            const africa = [
+                "Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi",
+                "Cameroon", "Cape Verde Islands", "Central African Republic", "Chad",
+                "Comoros", "Congo Democratic Rep.", "Congo Republic", "Djibouti", "Egypt",
+                "Equatorial Guinea", "Eritrea", "Ethiopia", "Gabon", "Gambia", "Ghana",
+                "Guinea", "Guinea Bissau", "Ivory Coast [Cote D'Ivoire]", "Kenya", "Lesotho",
+                "Liberia", "Libya", "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius",
+                "Morocco", "Mozambique", "Namibia", "Niger", "Nigeria", "Rwanda",
+                "Sao Tome & Principe", "Senegal", "Seychelles", "Sierra Leone", "Somalia",
+                "Somaliland", "South Africa", "Sudan", "Swaziland", "Tanzania", "Togo",
+                "Tonga", "Tunisia", "Uganda", "Zambia", "Zimbabwe"
+            ].map(normalize);
+            const oceania = [
+                "Fiji Islands", "Kiribati", "Marshall Island (Majuro)", "Micronesia", "Nauru",
+                "Palau", "Papua New Guinea", "Samoa", "Solomon Islands", "Tonga",
+                "Tuvalu", "Vanuatu"
+            ].map(normalize);
+            const europe = [
+                "Albania", "Andorra", "Armenia", "Austria", "Azerbaidjan", "Belarus", "Belgium",
+                "Bosnia/Herzegovina", "Bulgaria", "Croatia / Hrvatsa", "Cyprus", "Czech Republic",
+                "Denmark", "Estonia", "Finland", "France", "Georgia", "Germany", "Greece",
+                "Hungary", "Iceland", "Ireland (Eire)", "Italy", "Latvia", "Liechtenstein",
+                "Lithuania", "Luxembourg", "Macedonia", "Malta", "Moldavia", "Monaco",
+                "Montenegro", "Netherlands/Holland", "Norway", "Poland", "Portugal", "Romania",
+                "San Marino", "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland",
+                "UK (United Kingdom)", "Ukraine", "Vatican City"
+            ].map(normalize);
 
             const c = normalize(country);
             if (!c) return "Other Countries";
@@ -262,7 +294,8 @@ export const createOrder = async (req, res) => {
             if (oceania.includes(c)) return "Oceania";
             if (["usa", "united states"].includes(c)) return "USA";
             if (["canada"].includes(c)) return "Canada";
-            if (["europe", "uk", "germany", "france", "italy", "spain"].includes(c)) return "Europe";
+            // if (["europe", "uk", "germany", "france", "italy", "spain"].includes(c)) return "Europe";
+            if (europe.map(x => x.toLowerCase()).includes(c)) return "Europe";
 
             return "Other Countries";
         };
@@ -479,7 +512,7 @@ export const createPaypalOrder = async (req, res) => {
 
         // 3️⃣ Asian countries list
         const asianCountries = [
-            "Afghanistan", "Bangladesh", "Bhutan", "Brunei", "Cambodia", "Georgia", "Indonesia",
+            "Afghanistan", "Bangladesh", "Bhutan", "Brunei", "Cambodia", "Hong-Kong", "Indonesia",
             "Japan", "Kazakhstan", "Kuwait", "Kyrgyzstan", "Laos", "Malaysia", "Maldives",
             "Mongolia", "Myanmar", "Nepal", "North Korea", "Oman", "Pakistan", "Philippines",
             "Qatar", "Saudi Arabia", "Singapore", "South Korea", "Sri Lanka", "Syria",
@@ -498,18 +531,85 @@ export const createPaypalOrder = async (req, res) => {
         const currency = payerCountry === "india" ? "INR" : "USD";
 
         // 7️⃣ Determine region for pricing (based on target company)
-        let targetRegion = "Other Countries";
-        if (targetCountry === "india") targetRegion = "India";
-        else if (targetCountry === "china") targetRegion = "China";
-        else if (asianCountries.map(normalize).includes(targetCountry)) targetRegion = "Asia (excluding India & China)";
-        else if (["usa", "united states"].includes(targetCountry)) targetRegion = "USA";
-        else if (["canada"].includes(targetCountry)) targetRegion = "Canada";
-        else if (["europe", "uk", "germany", "france", "italy", "spain"].includes(targetCountry)) targetRegion = "Europe";
-        else if (["uae", "saudi arabia", "qatar", "kuwait", "bahrain", "oman"].includes(targetCountry)) targetRegion = "Middle East";
-        else if (["australia", "new zealand"].includes(targetCountry)) targetRegion = "Australia & New Zealand";
-        else if (["south africa", "nigeria", "egypt", "kenya", "morocco", "ethiopia"].includes(targetCountry)) targetRegion = "Africa";
-        else if (["fiji", "papua new guinea", "samoa", "tonga"].includes(targetCountry)) targetRegion = "Oceania";
-        else if (["brazil", "mexico", "argentina", "colombia", "chile", "peru"].includes(targetCountry)) targetRegion = "Latin America";
+
+        const getRegion = (country) => {
+            const asiaExcludingIndiaChina = [
+                "Afghanistan", "Bangladesh", "Bhutan", "Brunei Darussalam", "Burma",
+                "Cambodia", "East Timor", "Hong Kong", "Indonesia", "Japan", "Kazakhistan",
+                "Korea (North)", "Korea (South)", "Kyrgyzstan", "Laos", "Malaysia", "Maldives",
+                "Mongolia", "Nepal", "Pakistan", "Philippines", "Russia", "Russian Federation",
+                "Singapore", "Sri Lanka", "Tadjikistan", "Taiwan", "Thailand", "Turkmenistan",
+                "Uzbekistan", "Vietnam"
+            ].map(normalize);
+
+            const australiaNZ = ["Australia", "New Zealand"].map(normalize);
+            const middleEast = [
+                "Abu Dhabi", "Bahrain", "Dubai", "Iran", "Iraq", "Israel", "Jordan",
+                "Kuwait", "Lebanon", "Oman", "Qatar", "Saudi Arabia", "Syria", "Turkey",
+                "Turkmenistan", "UAE (United Arab Emirates)", "Yemen"
+            ].map(normalize);
+            const latinAmerica = ["Brazil", "Mexico", "Argentina", "Colombia", "Chile", "Peru"].map(normalize);
+            const africa = [
+                "Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi",
+                "Cameroon", "Cape Verde Islands", "Central African Republic", "Chad",
+                "Comoros", "Congo Democratic Rep.", "Congo Republic", "Djibouti", "Egypt",
+                "Equatorial Guinea", "Eritrea", "Ethiopia", "Gabon", "Gambia", "Ghana",
+                "Guinea", "Guinea Bissau", "Ivory Coast [Cote D'Ivoire]", "Kenya", "Lesotho",
+                "Liberia", "Libya", "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius",
+                "Morocco", "Mozambique", "Namibia", "Niger", "Nigeria", "Rwanda",
+                "Sao Tome & Principe", "Senegal", "Seychelles", "Sierra Leone", "Somalia",
+                "Somaliland", "South Africa", "Sudan", "Swaziland", "Tanzania", "Togo",
+                "Tonga", "Tunisia", "Uganda", "Zambia", "Zimbabwe"
+            ].map(normalize);
+            const oceania = [
+                "Fiji Islands", "Kiribati", "Marshall Island (Majuro)", "Micronesia", "Nauru",
+                "Palau", "Papua New Guinea", "Samoa", "Solomon Islands", "Tonga",
+                "Tuvalu", "Vanuatu"
+            ].map(normalize);
+            const europe = [
+                "Albania", "Andorra", "Armenia", "Austria", "Azerbaidjan", "Belarus", "Belgium",
+                "Bosnia/Herzegovina", "Bulgaria", "Croatia / Hrvatsa", "Cyprus", "Czech Republic",
+                "Denmark", "Estonia", "Finland", "France", "Georgia", "Germany", "Greece",
+                "Hungary", "Iceland", "Ireland (Eire)", "Italy", "Latvia", "Liechtenstein",
+                "Lithuania", "Luxembourg", "Macedonia", "Malta", "Moldavia", "Monaco",
+                "Montenegro", "Netherlands/Holland", "Norway", "Poland", "Portugal", "Romania",
+                "San Marino", "Serbia", "Slovakia", "Slovenia", "Spain", "Sweden", "Switzerland",
+                "UK (United Kingdom)", "Ukraine", "Vatican City"
+            ].map(normalize);
+
+            const c = normalize(country);
+            if (!c) return "Other Countries";
+            if (c === "india") return "India";
+            if (c === "china") return "China";
+            if (asiaExcludingIndiaChina.includes(c)) return "Asia (excluding India & China)";
+            if (australiaNZ.includes(c)) return "Australia & New Zealand";
+            if (middleEast.includes(c)) return "Middle East";
+            if (latinAmerica.includes(c)) return "Latin America";
+            if (africa.includes(c)) return "Africa";
+            if (oceania.includes(c)) return "Oceania";
+            if (["usa", "united states"].includes(c)) return "USA";
+            if (["canada"].includes(c)) return "Canada";
+            // if (["europe", "uk", "germany", "france", "italy", "spain"].includes(c)) return "Europe";
+            if (europe.map(x => x.toLowerCase()).includes(c)) return "Europe";
+
+            return "Other Countries";
+        };
+
+        const targetRegion = getRegion(targetCountry);
+
+
+        // let targetRegion = "Other Countries";
+        // if (targetCountry === "india") targetRegion = "India";
+        // else if (targetCountry === "china") targetRegion = "China";
+        // else if (asianCountries.map(normalize).includes(targetCountry)) targetRegion = "Asia (excluding India & China)";
+        // else if (["usa", "united states"].includes(targetCountry)) targetRegion = "USA";
+        // else if (["canada"].includes(targetCountry)) targetRegion = "Canada";
+        // else if (["europe", "uk", "germany", "france", "italy", "spain", "Georgia",].includes(targetCountry)) targetRegion = "Europe";
+        // else if (["uae", "saudi arabia", "qatar", "kuwait", "bahrain", "oman"].includes(targetCountry)) targetRegion = "Middle East";
+        // else if (["australia", "new zealand"].includes(targetCountry)) targetRegion = "Australia & New Zealand";
+        // else if (["south africa", "nigeria", "egypt", "kenya", "morocco", "ethiopia"].includes(targetCountry)) targetRegion = "Africa";
+        // else if (["Fiji Islands", "papua new guinea", "samoa", "tonga"].includes(targetCountry)) targetRegion = "Oceania";
+        // else if (["brazil", "mexico", "argentina", "colombia", "chile", "peru"].includes(targetCountry)) targetRegion = "Latin America";
 
         // 8️⃣ Decide final amount
         const amount = currency === "INR"
