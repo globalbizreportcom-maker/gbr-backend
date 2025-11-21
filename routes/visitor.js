@@ -5,6 +5,7 @@ import paymentVisitor from '../models/paymentVisitor.js';
 import Payment from '../models/Payment.js';
 import ReportRequest from '../models/ReportRequest.js';
 import { agenda } from '../agenda.js';
+import axios from 'axios';
 dotenv.config();
 
 const visitorsRouter = express.Router();
@@ -99,6 +100,8 @@ visitorsRouter.get("/payments", async (req, res) => {
 //         });
 //     }
 // });
+
+
 
 visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
     try {

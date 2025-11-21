@@ -29,7 +29,7 @@ loginRouter.post("/send-otp", async (req, res) => {
             subject: "Your OTP Code",
             html: `<p>Your OTP code is <b>${otp}</b>. It is valid for 5 minutes.</p>`,
         });
-
+        console.log('OTP sent successfully');
         res.json({ success: true, message: "OTP sent successfully" });
     } catch (error) {
         res.status(500).json({ success: false, message: "Failed to send OTP" });
