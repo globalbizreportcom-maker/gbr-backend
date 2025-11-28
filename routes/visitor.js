@@ -14,6 +14,8 @@ const visitorsRouter = express.Router();
 visitorsRouter.post("/payments", async (req, res) => {
     try {
         const { userId, ...formData } = req.body;
+
+
         if (!userId) {
             return res.status(400).json({ error: "User ID is required" });
         }
@@ -24,6 +26,7 @@ visitorsRouter.post("/payments", async (req, res) => {
             paymentAmount: formData.paymentAmount,
             currency: formData.currency,
             contactCountry: formData.contactCountry?.label || formData.contactCountry,
+            contactState: formData.contactState || '',
             companyGst: formData.companyGst || '',
         });
         await visitor.save();
@@ -46,7 +49,7 @@ visitorsRouter.get("/payments", async (req, res) => {
         const visitors = await paymentVisitor.find()
             .populate({
                 path: "user",
-                select: "name email phone country company createdAt", // Select only needed fields
+                select: "name email phone country state gstin company createdAt", // Select only needed fields
             })
             .sort({ createdAt: -1 }); // Sort newest first
         res.status(200).json({ visitors });
@@ -115,7 +118,7 @@ visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
         // 2️⃣ Load all payment visitors
         const visitors = await paymentVisitor
             .find()
-            .populate("user", "name email phone country company createdAt")
+            .populate("user", "name email phone country state gstin company createdAt")
             .sort({ createdAt: -1 })
             .lean();
 
@@ -157,6 +160,7 @@ visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
                 normalize(visitor.contactEmail),
                 normalize(visitor.contactPhone),
                 normalize(visitor.contactCompany),
+                normalize(visitor.contactState),
                 dateKey(visitor.createdAt),
             ].join("|");
 

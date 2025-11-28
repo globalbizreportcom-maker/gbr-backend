@@ -8,10 +8,10 @@ const registrationRouter = express.Router();
 // POST /register
 registrationRouter.post("/form-submit", async (req, res) => {
     try {
-        const { name, email, phone, country, password, company, gst } = req.body;
+        const { name, email, phone, country, password, company, state, gst } = req.body;
 
         // 1. Validate input
-        if (!name || !email || !country) {
+        if (!name || !email || !country?.value) {
             return res.status(400).json({ success: false, message: "All fields are required" });
         }
 
@@ -30,13 +30,13 @@ registrationRouter.post("/form-submit", async (req, res) => {
             hashedPassword = await bcrypt.hash(password, salt);
         }
 
-
         // 4. Save new user
         const newUser = new User({
             name,
             email,
             phone,
-            country,
+            country: country?.label,
+            state: state?.label,
             password: hashedPassword,
             company,
             gstin: gst || ''

@@ -1,29 +1,3 @@
-// import Agenda from "agenda";
-// import Payment from "./models/Payment.js";
-// import { sendAbandonedCheckoutEmail } from "./utils/sendAbandonedCheckoutEmail.js";
-
-// const mongoConnectionString = process.env.MONGO_URI;
-
-// export const agenda = new Agenda({
-//     db: { address: mongoConnectionString, collection: "jobs" },
-// });
-
-// agenda.define("send abandoned checkout email", async (job) => {
-//     const { userId, reportRequestId } = job.attrs.data;
-
-//     console.log(`⏰ Checking abandoned checkout for user ${userId}`);
-
-//     const payment = await Payment.findOne({ reportRequest: reportRequestId });
-
-//     if (!payment || payment.status !== "completed") {
-//         await sendAbandonedCheckoutEmail(userId);
-//         console.log("📧 Reminder email sent to:", userId);
-//     } else {
-//         console.log("✅ Payment already completed, skipping email.");
-//     }
-// });
-
-// await agenda.start();
 
 
 import Agenda from "agenda";
@@ -75,6 +49,8 @@ agenda.define("send abandoned checkout email", async (job) => {
             company: normalize(visitorData.contactCompany),
             website: normalize(visitorData.website),
             country: normalize(visitorData.contactCountry),
+            state: normalize(visitorData.contactState),
+            gst: normalize(visitorData.companyGst),
         };
 
         // 3️⃣ Compare with ReportRequests

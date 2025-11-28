@@ -184,7 +184,7 @@ export const getReportDetailsById = async (id) => {
     }
 };
 
-const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails }) => {
+const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails, reportFile }) => {
     if (!recipientEmail) return;
 
     // Helper to conditionally render table rows
@@ -212,7 +212,7 @@ const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails }
         <p>Please note that GBR Reports are 100% freshly investigated and known for their exceptional quality, depth, and accuracy.</p>
         <p>Thank you once again for considering GBR as your trusted credit reporting partner. We look forward to supporting your ongoing credit risk assessment and due diligence requirements.</p>
         <p>Should you have any further questions or need assistance placing an order, please feel free to contact us — we’ll be happy to assist you.</p>
-        <p>Best regards,<br/><strong>GBR</strong><br/>Team, Global Sales<br/><a href="https://www.GlobalBizReport.com">www.GlobalBizReport.com</a></p>
+        <p>Best regards,<br/><strong>GBR</strong><br/>Team, Global Sales<br/><a href="https://www.globalbizreport.com">www.GlobalBizReport.com</a></p>
         <hr/>
         <p>About GlobalBizReport (GBR):</p>
         <p>GlobalBizReport is one of the most trusted business services platforms, providing freshly investigated and detailed Business Credit Reports and Due Diligence Reports to Corporates, SMEs, B2B Marketplaces, Financial Institutions, Global Consulting Firms, and Market Research Companies worldwide.</p>
@@ -220,11 +220,23 @@ const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails }
       </div>
     `;
 
+    // Build attachments array if reportFile exists
+    const attachments = [];
+    if (reportFile) {
+        attachments.push({
+            filename: `${companyDetails.companyName || "Report"}.pdf`,
+            content: reportFile,         // base64 content or buffer
+            encoding: 'base64',         // if reportFile is base64 string
+        });
+    }
+
+
     await transporter.sendMail({
         from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
         to: recipientEmail,
         subject: `Business Credit Report of ${companyDetails.companyName || ""}`,
         html: htmlContent,
+        attachments,
     });
 };
 
@@ -309,7 +321,7 @@ adminRouter.get("/payments", async (req, res) => {
             })
             .populate({
                 path: "reportRequest",
-                select: "targetCompany requesterInfo status createdAt", // Include both requesterInfo & targetCompany
+                select: "companyType targetCompany requesterInfo status createdAt", // Include both requesterInfo & targetCompany
             })
             .sort({ createdAt: -1 });
         res.status(200).json(payments);

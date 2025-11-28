@@ -18,10 +18,11 @@ import multer from 'multer';
 import visitorsRouter from './routes/visitor.js';
 import fs from "fs";
 import rateLimit from 'express-rate-limit';
-
+import { CronJob } from "cron";
 import Database from 'better-sqlite3';
 import { Buffer } from 'buffer';
 import User from './models/User.js';
+import ReportRequest from './models/ReportRequest.js';
 
 const db = new Database("./sqldb/companies.db");
 
@@ -803,6 +804,385 @@ async function getAccessToken() {
 
 //     }
 // });
+
+
+
+
+
+
+// const listUniqueCompanyPayments = async () => {
+//     const results = await ReportRequest.aggregate([
+//         // 1. Join Payment records
+//         {
+//             $lookup: {
+//                 from: "payments",
+//                 localField: "_id",
+//                 foreignField: "reportRequest",
+//                 as: "payments"
+//             }
+//         },
+
+//         // 2. Add paid flag
+//         {
+//             $addFields: {
+//                 paid: {
+//                     $in: ["paid", "$payments.status"]
+//                 }
+//             }
+//         },
+
+//         // 3. Group by (user + companyName)
+//         {
+//             $group: {
+//                 _id: {
+//                     user: "$requester",
+//                     companyName: "$targetCompany.name"
+//                 },
+//                 paid: { $max: "$paid" },  // if any is paid → paid = true
+//                 paymentIds: { $addToSet: "$payments._id" },  // collect all payment IDs
+//                 reportRequestIds: { $addToSet: "$_id" }      // collect all related reportRequest IDs
+//             }
+//         },
+
+//         // 4. Lookup user data
+//         {
+//             $lookup: {
+//                 from: "users",
+//                 localField: "_id.user",
+//                 foreignField: "_id",
+//                 as: "userInfo"
+//             }
+//         },
+
+//         // 5. Flatten user
+//         {
+//             $unwind: "$userInfo"
+//         },
+
+//         // 6. Final clean output
+//         {
+//             $project: {
+//                 _id: 0,
+//                 userId: "$_id.user",
+//                 email: "$userInfo.email",
+//                 companyName: "$_id.companyName",
+//                 paid: 1,
+//                 reportRequestIds: 1,
+//                 paymentIds: {
+//                     // flatten nested arrays inside arrays
+//                     $reduce: {
+//                         input: "$paymentIds",
+//                         initialValue: [],
+//                         in: { $concatArrays: ["$$value", "$$this"] }
+//                     }
+//                 }
+//             }
+//         }
+//     ]);
+//     console.log(results);
+//     return results;
+// };
+
+
+const listUniqueCompanyPayments = async () => {
+    const results = await ReportRequest.aggregate([
+
+        // 1. Join payments
+        {
+            $lookup: {
+                from: "payments",
+                localField: "_id",
+                foreignField: "reportRequest",
+                as: "payments"
+            }
+        },
+
+        // 2. Add paid flag
+        {
+            $addFields: {
+                paid: { $in: ["paid", "$payments.status"] }
+            }
+        },
+
+        // 3. Group unique (user + companyName)
+        //    AND sort inside group to extract latest record
+        {
+            $group: {
+                _id: {
+                    user: "$requester",
+                    companyName: "$targetCompany.name"
+                },
+
+                paid: { $max: "$paid" },
+
+                // store all reportRequests, but sorted by createdAt DESC
+                reportRequests: {
+                    $push: {
+                        createdAt: "$createdAt",
+                        doc: "$$ROOT"
+                    }
+                },
+
+                // store all payments (flatten), sorted by createdAt DESC
+                paymentArrays: {
+                    $push: {
+                        createdAt: { $ifNull: [{ $arrayElemAt: ["$payments.createdAt", 0] }, null] },
+                        payment: { $arrayElemAt: ["$payments", 0] }
+                    }
+                }
+            }
+        },
+
+        // 4. Lookup user data
+        {
+            $lookup: {
+                from: "users",
+                localField: "_id.user",
+                foreignField: "_id",
+                as: "userInfo"
+            }
+        },
+        { $unwind: "$userInfo" },
+
+        // 5. Extract LATEST items
+        {
+            $project: {
+                _id: 0,
+
+                userId: "$_id.user",
+                email: "$userInfo.email",
+                companyName: "$_id.companyName",
+                paid: 1,
+
+                // sort reportRequests DESC → take latest
+                latestReportRequest: {
+                    $arrayElemAt: [
+                        {
+                            $sortArray: {
+                                input: "$reportRequests",
+                                sortBy: { createdAt: -1 }
+                            }
+                        },
+                        0
+                    ]
+                },
+
+                // sort payments DESC → take latest
+                latestPayment: {
+                    $arrayElemAt: [
+                        {
+                            $sortArray: {
+                                input: "$paymentArrays",
+                                sortBy: { createdAt: -1 }
+                            }
+                        },
+                        0
+                    ]
+                }
+            }
+        },
+
+        // 6. Final projection
+        {
+            $project: {
+                userId: 1,
+                email: 1,
+                companyName: 1,
+                paid: 1,
+
+                reportRequestId: "$latestReportRequest.doc._id",
+
+                paymentId: "$latestPayment.payment._id",
+
+                // company
+                address: "$latestReportRequest.doc.targetCompany.address",
+                city: "$latestReportRequest.doc.targetCompany.city",
+                state: "$latestReportRequest.doc.targetCompany.state",
+                country: "$latestReportRequest.doc.targetCompany.country",
+                postalCode: "$latestReportRequest.doc.targetCompany.postalCode",
+                telephone: "$latestReportRequest.doc.targetCompany.phone",
+                website: "$latestReportRequest.doc.targetCompany.website",
+
+                // requester
+                contactName: "$latestReportRequest.doc.requesterInfo.name",
+                contactEmail: "$latestReportRequest.doc.requesterInfo.email",
+                contactCountry: "$latestReportRequest.doc.requesterInfo.country",
+                contactState: "$latestReportRequest.doc.requesterInfo.state",
+                companyGst: "$latestReportRequest.doc.requesterInfo.gst",
+                contactPhone: "$latestReportRequest.doc.requesterInfo.phone",
+                contactCompany: "$latestReportRequest.doc.requesterInfo.company",
+                optionalEmail: "$latestReportRequest.doc.requesterInfo.optionalEmail",
+
+                // payment info (latest)
+                paymentAmount: "$latestPayment.payment.amount",
+                paymentCreatedAt: "$latestPayment.payment.createdAt",
+                currency: "$latestPayment.payment.currency"
+            }
+        }
+    ]);
+
+    console.log(results);
+    return results;
+};
+
+
+export const processAbandonedPayments = async () => {
+    const items = await listUniqueCompanyPayments();
+    const now = new Date();
+
+    for (const item of items) {
+        // skip paid items
+        if (item.paid === true) continue;
+
+        // safety check
+        if (!item.paymentCreatedAt) continue;
+
+        const paymentDate = new Date(item.paymentCreatedAt);
+        const diffDays = Math.floor((now - paymentDate) / (1000 * 60 * 60 * 24));
+
+        console.log(`User: ${item.email} | Diff: ${diffDays} days`);
+
+        // ----------------------------------
+        // 🔥 3-Day Reminder Email
+        // ----------------------------------
+        if (diffDays === 3) {
+            console.log("📩 Sending 3-day reminder email to", item.email);
+
+            const emailData = {
+                // basic
+                userId: item.userId,
+                email: item.email,
+                companyName: item.companyName,
+                paid: item.paid,
+
+                // ids
+                reportRequestId: item.reportRequestId,
+                paymentId: item.paymentId,
+
+                // company details
+                address: item.address,
+                city: item.city,
+                state: item.state,
+                country: item.country,
+                postalCode: item.postalCode,
+                telephone: item.telephone,
+                website: item.website,
+
+                // requester details
+                contactName: item.contactName,
+                contactEmail: item.contactEmail,
+                contactCountry: item.contactCountry,
+                contactState: item.contactState,
+                companyGst: item.companyGst,
+                contactPhone: item.contactPhone,
+                contactCompany: item.contactCompany,
+                optionalEmail: item.optionalEmail,
+
+                // payment details
+                paymentAmount: item.paymentAmount,
+                paymentCreatedAt: item.paymentCreatedAt,
+                currency: item.currency,
+
+                // what type of email is this?
+                type: '3-day-reminder' // "3-day-reminder" or "10-day-final"
+            };
+
+
+            await sendPaymentCancelledEmail(item.userId, emailData);
+        }
+
+        // ----------------------------------
+        // 🔥 10-Day Final Abandoned Email
+        // ----------------------------------
+        if (diffDays === 10) {
+            console.log("⚠️ Sending 10-day abandoned email to", item.email);
+
+            const emailData = {
+                // basic
+                userId: item.userId,
+                email: item.email,
+                companyName: item.companyName,
+                paid: item.paid,
+
+                // ids
+                reportRequestId: item.reportRequestId,
+                paymentId: item.paymentId,
+
+                // company details
+                address: item.address,
+                city: item.city,
+                state: item.state,
+                country: item.country,
+                postalCode: item.postalCode,
+                telephone: item.telephone,
+                website: item.website,
+
+                // requester details
+                contactName: item.contactName,
+                contactEmail: item.contactEmail,
+                contactCountry: item.contactCountry,
+                contactState: item.contactState,
+                companyGst: item.companyGst,
+                contactPhone: item.contactPhone,
+                contactCompany: item.contactCompany,
+                optionalEmail: item.optionalEmail,
+
+                // payment details
+                paymentAmount: item.paymentAmount,
+                paymentCreatedAt: item.paymentCreatedAt,
+                currency: item.currency,
+
+                // what type of email is this?
+                type: "10-day-final" // "3-day-reminder" or "10-day-final"
+            };
+
+
+            await sendPaymentCancelledEmail(item.userId, emailData);
+        }
+    }
+};
+
+
+const job = new CronJob(
+    '0 9 * * *', // 9 AM every day
+    async () => {
+        console.log("Running job at 9 AM US Eastern");
+        try {
+            await processAbandonedPayments();
+        } catch (err) {
+            console.error("Error in abandoned payments cron:", err);
+        }
+    },
+    null, // onComplete
+    true, // start immediately
+    "America/New_York" // timezone
+);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -33,7 +33,7 @@ export const sendAbandonedCheckoutEmail = async (userId, visitorData) => {
       html: `
         <p>Dear ${recipientName},</p>
 
-        <p>Thank you for your interest to inquire for a Freshly Investigated Credit Report from <a href="https://www.GlobalBizReport.com" target="_blank">www.GlobalBizReport.com</a> (GBR). We want to assure you that you made the right choice. GBR is one of the most reliable business services platforms providing Freshly Investigated Business Credit Reports to Corporates, SMEs, B2B Marketplaces, Financial Institutes, Global Consultancy & Market Research companies worldwide.</p>
+        <p>Thank you for your interest to inquire for a Freshly Investigated Credit Report from <a href="https://www.globalbizreport.com" target="_blank">www.GlobalBizReport.com</a> (GBR). We want to assure you that you made the right choice. GBR is one of the most reliable business services platforms providing Freshly Investigated Business Credit Reports to Corporates, SMEs, B2B Marketplaces, Financial Institutes, Global Consultancy & Market Research companies worldwide.</p>
 
         <p>We noticed that you couldn't complete the transaction due to some technical problem. We are sorry for the inconvenience. But no worries!</p>
 

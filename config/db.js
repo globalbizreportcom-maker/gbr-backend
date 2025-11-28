@@ -28,11 +28,12 @@ const connectDB = async () => {
 
         // await User.deleteMany({
         //     email: {
-        //         $in: ['offlguy@gmail.com',
+        //         $in: [
+        //             'offlguy@gmail.com',
         //             'pabishek61001@gmail.com',
-        //             'rishirajappan2@gmail.com',
-        //             'suryacbr@gmail.com',
-        //             'surya49official@gmail.com',
+        //             // 'rishirajappan2@gmail.com',
+        //             // 'suryacbr@gmail.com',
+        //             // 'surya49official@gmail.com',
         //             // 'venkat@samantacom.com',
         //         ]
         //     }
@@ -47,9 +48,6 @@ const connectDB = async () => {
         // });
 
         // // Array of IDs to delete
-
-        // const userIdToDelete = "69116acf4827c7bf9fc7e46e";
-
         // await Payment.deleteMany({
         //     'details.payerEmail': 'pabishek61001@gmail.com'
         // });
