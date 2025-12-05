@@ -133,7 +133,7 @@ export const updateProfile = async (req, res) => {
         }
 
         // Validate update fields
-        const allowedFields = ["name", "company", "country", "phone"];
+        const allowedFields = ["name", "company", "country", "phone", "gstin"];
         const updates = {};
         for (const key of Object.keys(updateFields)) {
             if (allowedFields.includes(key)) {

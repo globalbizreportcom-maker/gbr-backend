@@ -160,7 +160,7 @@ visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
                 normalize(visitor.contactEmail),
                 normalize(visitor.contactPhone),
                 normalize(visitor.contactCompany),
-                normalize(visitor.contactState),
+                // normalize(visitor.contactState),
                 dateKey(visitor.createdAt),
             ].join("|");
 
@@ -176,7 +176,6 @@ visitorsRouter.get("/abandoned-checkouts", async (req, res) => {
             visitors: abandonedVisitors,
         });
     } catch (error) {
-        console.error("🚨 Abandoned checkout detection error:", error);
         res.status(500).json({
             success: false,
             message: "Internal server error",

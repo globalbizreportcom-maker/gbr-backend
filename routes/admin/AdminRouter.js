@@ -96,8 +96,19 @@ adminRouter.get("/dashboard-stats", verifyAdmin, async (req, res) => {
         // Total Orders = count of paid payments
         const totalOrders = payments.length;
 
+        // Revenue split by currency
+        let totalRevenueINR = 0;
+        let totalRevenueUSD = 0;
+
         // Revenue = sum of amounts
-        const totalRevenue = payments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        payments.forEach((p) => {
+            if (p.currency === "INR") {
+                totalRevenueINR += p.total || p.amount || 0;
+            }
+            else if (p.currency === "USD") {
+                totalRevenueUSD += p.total || p.amount || 0;
+            }
+        });
 
         // Split by report status
         let pendingOrders = 0;
@@ -121,7 +132,10 @@ adminRouter.get("/dashboard-stats", verifyAdmin, async (req, res) => {
                 totalOrders,
                 pendingOrders,
                 deliveredOrders,
-                totalRevenue,
+                revenue: {
+                    INR: totalRevenueINR,
+                    USD: totalRevenueUSD,
+                }
             },
         });
     } catch (error) {
@@ -240,6 +254,95 @@ const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails, 
     });
 };
 
+async function sendInProgessEmail({ result }) {
+
+    // Destructure requester info
+    const {
+        name,
+        email,
+        company: requesterCompany,
+        website: requesterWebsite,
+        country: requesterCountry
+    } = result?.report?.requesterInfo || {};
+
+    // Destructure target company info
+    const {
+        name: targetCompanyName,
+        address: targetCompanyAddress,
+        country: targetCompanyCountry,
+        website: targetCompanyWebsite
+    } = result?.report?.targetCompany || {};
+
+    try {
+
+        //  Email options
+        const mailOptions = {
+            from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
+            to: email,
+            subject: "Your Credit Report Order is being Processed – GlobalBizReport.com",
+            html: `
+        <p>Dear ${name || 'User'},</p>
+        <p>Thank you for your order with GlobalBizReport.com (GBR). We appreciate your trust in our services.</p>
+
+        <p>We are pleased to confirm receipt of your request for a freshly investigated Business Credit Report. Our investigation team has initiated the process, and the completed report will be emailed to you at the earliest.</p>
+
+        <p>Kindly review the following inquiry details and confirm if the information is correct:</p>
+        <hr />
+        <p><strong>Company Inquiry Details – Company to Verify</strong></p>
+        <table cellpadding="4" cellspacing="0" border="0" style="width:100%; font-size:14px; color:#333;">
+          ${targetCompanyName && `
+          <tr>
+            <td style="font-weight:bold; width:150px;">Name:</td>
+            <td>${targetCompanyName}</td>
+          </tr>`}
+        
+          ${targetCompanyAddress && `
+          <tr>
+            <td style="font-weight:bold;">Address:</td>
+            <td>${targetCompanyAddress}</td>
+          </tr>`}
+        
+          ${targetCompanyCountry && `
+          <tr>
+            <td style="font-weight:bold;">Country:</td>
+            <td>${targetCompanyCountry}</td>
+          </tr>`}
+        
+          ${targetCompanyWebsite && `
+          <tr>
+            <td style="font-weight:bold;">Website:</td>
+            <td>${targetCompanyWebsite}</td>
+          </tr>`}
+        </table>
+        <hr style="border:0; border-top:1px solid #ccc; margin:10px 0;" />
+        
+
+        <p>At GlobalBizReport, we are committed to delivering 100% freshly investigated credit reports known for their exceptional quality, in-depth coverage, and accuracy. Our standard delivery timeframe for international reports is now just 1-3 business days.</p>
+
+        <p>Thank you once again for choosing GBR Reports as your trusted credit reporting partner. We look forward to supporting your ongoing credit risk assessment and business due diligence needs.</p>
+
+        <p>If you have any questions or need support with additional reports, please feel free to contact us — we’ll be happy to assist you.</p>
+
+        <p>Best Regards,</p>
+        <br/>
+        Team - GBR <br/>
+        <a href="https://www.globalbizreport.com">www.GlobalBizReport.com</a></p>
+
+        <hr />
+        <p><strong>About GlobalBizReport (GBR):</strong><br/>
+        GlobalBizReport is one of the world’s most trusted platforms for freshly investigated Business Credit Report and Due Diligence Reports, serving Corporates, SMEs, B2B Marketplaces, Financial Institutions, and Consulting Organisations in 220+ countries. Trusted by 20,000+ companies globally, GBR delivers fast, accurate, and in-depth business insights on companies worldwide.
+        </p>
+      `,
+        };
+
+        // Send email
+        const info = await transporter.sendMail(mailOptions);
+
+    } catch (err) {
+        console.error("Error sending email:", err);
+    }
+}
+
 
 adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
     const { id } = req.params;
@@ -262,14 +365,18 @@ adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
                     recipientName: reportDetails.recipientName,
                     recipientEmail: reportDetails.recipientEmail,
                     companyDetails: reportDetails.companyDetails,
-                    reportFile: reportDetails.reportFile, // optional PDF attachment
+                    reportFile: reportDetails.reportFile, //  PDF attachment
                 });
             }
         }
 
+        if (status === "in-progress") {
+            // in progress email sending function
+            await sendInProgessEmail({ result });
+        }
+
         res.json(result);
     } catch (err) {
-        console.error(err);
         res.status(500).json({ success: false, message: "Failed to update status or send email" });
     }
 });

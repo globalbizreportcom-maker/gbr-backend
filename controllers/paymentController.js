@@ -20,7 +20,78 @@ const razorpay = new Razorpay({
     key_secret: process.env.RAZORPAY_KEY_SECRET || '2wUhDOwdqHHTkTGLCNZobfvr',
 });
 
-async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportRequest }) {
+// async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportRequest }) {
+//     // Destructure requester info
+//     const {
+//         name,
+//         email,
+//         phone,
+//         optionalEmail,
+//         company: requesterCompany,
+//         website: requesterWebsite,
+//         country: requesterCountry
+//     } = reportRequest?.requesterInfo || {};
+
+//     // Destructure target company info
+//     const {
+//         name: targetCompanyName,
+//         address: targetCompanyAddress,
+//         country: targetCompanyCountry,
+//         website: targetCompanyWebsite
+//     } = reportRequest?.targetCompany || {};
+
+//     try {
+
+//         //  Email options
+//         const mailOptions = {
+//             from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
+//             to: recipientEmail,
+//             subject: "Your Credit Report Order is being Processed – GlobalBizReport.com",
+//             html: `
+//         <p>Dear ${name || 'User'},</p>
+//         <p>Thank you for your order with GlobalBizReport.com (GBR). We appreciate your trust in our services.</p>
+
+//         <p>We are pleased to confirm receipt of your request for a freshly investigated Business Credit Report. Our investigation team has initiated the process, and the completed report will be emailed to you at the earliest.</p>
+
+//         <p>Kindly review the following inquiry details and confirm if the information is correct:</p>
+//         <hr />
+//         <p><strong>Company Inquiry Details – Company to Verify</strong><br/>
+//         ${targetCompanyName || '(Company Name)'}<br/>
+//         ${targetCompanyAddress || '(Address)'}<br/>
+//         ${targetCompanyCountry || '(Country)'}<br/>
+//         ${targetCompanyWebsite || '(Website)'}
+//         </p>
+//         <hr />
+
+//         <p>At GlobalBizReport, we are committed to delivering 100% freshly investigated credit reports known for their exceptional quality, in-depth coverage, and accuracy. Our standard delivery timeframe for international reports is now just 1-3 business days.</p>
+
+//         <p>Thank you once again for choosing GBR Reports as your trusted credit reporting partner. We look forward to supporting your ongoing credit risk assessment and business due diligence needs.</p>
+
+//         <p>If you have any questions or need support with additional reports, please feel free to contact us — we’ll be happy to assist you.</p>
+
+//         <p>Best Regards,</p>
+//         <br/>
+//         Team - GBR <br/>
+//         <a href="https://www.globalbizreport.com">www.GlobalBizReport.com</a></p>
+
+//         <hr />
+//         <p><strong>About GlobalBizReport (GBR):</strong><br/>
+//         GlobalBizReport is one of the world’s most trusted platforms for freshly investigated Business Credit Report and Due Diligence Reports, serving Corporates, SMEs, B2B Marketplaces, Financial Institutions, and Consulting Organisations in 220+ countries. Trusted by 20,000+ companies globally, GBR delivers fast, accurate, and in-depth business insights on companies worldwide.
+//         </p>
+//       `,
+//         };
+
+//         // Send email
+//         const info = await transporter.sendMail(mailOptions);
+
+//     } catch (err) {
+//         console.error("Error sending email:", err);
+//     }
+// }
+
+
+async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportRequest, payment }) {
+
     // Destructure requester info
     const {
         name,
@@ -29,7 +100,8 @@ async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportReq
         optionalEmail,
         company: requesterCompany,
         website: requesterWebsite,
-        country: requesterCountry
+        country: requesterCountry,
+        gst,
     } = reportRequest?.requesterInfo || {};
 
     // Destructure target company info
@@ -40,54 +112,129 @@ async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportReq
         website: targetCompanyWebsite
     } = reportRequest?.targetCompany || {};
 
+    // Calculate dynamic values
+    let businessAmount = payment?.amount || 0;
+    let gstAmount = payment?.tax || 0;
+    let totalAmount = payment?.amount || 0;
+
+    // Auto-calc only if currency is INR
+    if (payment?.currency === "INR") {
+        gstAmount = (totalAmount * 0.18).toFixed(2);
+        businessAmount = (totalAmount - gstAmount).toFixed(2);
+    } else {
+        // No GST for non-INR
+        gstAmount = null;
+        businessAmount = totalAmount;
+    }
+
     try {
 
-        //  Email options
         const mailOptions = {
             from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
             to: recipientEmail,
-            subject: "Your Credit Report Order is being Processed – GlobalBizReport.com",
+            subject: "Thanks for your Business Report order",
             html: `
-        <p>Dear ${name || 'User'},</p>
-        <p>Thank you for your order with GlobalBizReport.com (GBR). We appreciate your trust in our services.</p>
+<div style="
+font-family: Arial, sans-serif; 
+font-size: 14px; 
+color: #333; 
+max-width: 680px;      
+margin: 0 auto;       
+padding: 20px;         
+">
 
-        <p>We are pleased to confirm receipt of your request for a freshly investigated Business Credit Report. Our investigation team has initiated the process, and the completed report will be emailed to you at the earliest.</p>
+    <h2 style="text-align: center; margin-bottom: 5px;">Thanks for your Business Report order</h2>
+    <p style="text-align: center; margin-top: 0;">
+        Your order and payment details are below.
+    </p>
 
-        <p>Kindly review the following inquiry details and confirm if the information is correct:</p>
-        <hr />
-        <p><strong>Company Inquiry Details – Company to Verify</strong><br/>
-        ${targetCompanyName || '(Company Name)'}<br/>
-        ${targetCompanyAddress || '(Address)'}<br/>
-        ${targetCompanyCountry || '(Country)'}<br/>
-        ${targetCompanyWebsite || '(Website)'}
-        </p>
-        <hr />
+    <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;" />
 
-        <p>At GlobalBizReport, we are committed to delivering 100% freshly investigated credit reports known for their exceptional quality, in-depth coverage, and accuracy. Our standard delivery timeframe for international reports is now just 1-3 business days.</p>
+    <h3 style="text-align: center; margin-bottom: 10px;">YOUR ORDER DETAILS</h3>
 
-        <p>Thank you once again for choosing GBR Reports as your trusted credit reporting partner. We look forward to supporting your ongoing credit risk assessment and business due diligence needs.</p>
+    <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
+        <tr>
+        <td width="50%" valign="top">
+        <strong>Billed To</strong><br /><br />
+    
+        ${name && `${name}<br />`}
+        ${email && `${email}<br />`}
+        ${requesterCompany && `${requesterCompany}<br />`}
+        ${requesterCountry && `${requesterCountry}<br />`}
+        ${gst && `GSTIN: ${gst}<br />`}
+    </td>
+    
+            <td width="50%" valign="top">
+                <strong>Issued By</strong><br /><br />
+                GLOBAL BIZ REPORT<br />
+                TECHCENT INNOVATIONS<br />
+                UNIT NO. M-1, 1ST FLOOR,<br />
+                LANDMARK CYBER PARK,<br />
+                SECTOR-67, GURUGRAM, HARYANA - 122102<br />
+                GSTIN: 06AKRPB9332P1ZK
+            </td>
+        </tr>
+    </table>
 
-        <p>If you have any questions or need support with additional reports, please feel free to contact us — we’ll be happy to assist you.</p>
+    <br />
 
-        <p>Best Regards,</p>
-        <br/>
-        Team - GBR <br/>
-        <a href="https://www.globalbizreport.com">www.GlobalBizReport.com</a></p>
+    <h3 style="margin-top: 20px;">Invoice Details</h3>
 
-        <hr />
-        <p><strong>About GlobalBizReport (GBR):</strong><br/>
-        GlobalBizReport is one of the world’s most trusted platforms for freshly investigated Business Credit Report and Due Diligence Reports, serving Corporates, SMEs, B2B Marketplaces, Financial Institutions, and Consulting Organisations in 220+ countries. Trusted by 20,000+ companies globally, GBR delivers fast, accurate, and in-depth business insights on companies worldwide.
-        </p>
-      `,
+    <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
+        <tr>
+            <td>Order ID: <strong>${payment?.orderId || '-'}</strong></td>
+        </tr>
+        <tr>
+            <td>Date: <strong>${new Date(payment?.createdAt).toLocaleDateString() || '-'}</strong></td>
+        </tr>
+    </table>
+
+    <br />
+
+    <h3 style="margin-top: 20px;">Report Charges Summary</h3>
+
+    <table width="100%" cellpadding="10" cellspacing="0" border="1" 
+    style="border-collapse: collapse; text-align: left;">
+    
+        <tr>
+            <td width="70%">Business Report</td>
+            <td width="30%" align="right"> ${payment?.currency} ${businessAmount}</td>
+        </tr>
+    
+        ${payment?.currency === "INR" ? `
+        <tr>
+                <td>IGST (18%)</td>
+                <td align="right">INR ${gstAmount}</td>
+            </tr>
+            `
+                    : ""
+                }
+    
+        <tr>
+            <td><strong>TOTAL</strong></td>
+            <td align="right"><strong>${payment?.currency} ${totalAmount}</strong></td>
+        </tr>
+    
+    </table>
+    
+    <br />
+
+    <h3>CONTACT US</h3>
+    <p>
+        For any queries, <a href="https://www.globalbizreport.com/contact">click here to contact us</a>.
+    </p>
+
+</div>
+`,
         };
 
-        // Send email
-        const info = await transporter.sendMail(mailOptions);
+        await transporter.sendMail(mailOptions);
 
     } catch (err) {
         console.error("Error sending email:", err);
     }
 }
+
 
 
 export const sendPaymentCancelledEmail = async (userId, visitorData) => {
@@ -355,7 +502,7 @@ export const createOrder = async (req, res) => {
         });
 
         // 8️⃣ Respond
-        res.json({ orderId: order?.id || null, amount: totalAmount, currency, key: 'rzp_live_ROY0D3SgPD1pdG' });
+        res.json({ orderId: order?.id || null, amount: totalAmount, currency, key: razorpay.key_id });
     } catch (error) {
         console.error("createOrder error:", error);
         res.status(500).json({ error: "Failed to create order" });
@@ -383,6 +530,8 @@ export const verifyPayment = async (req, res) => {
 
         // 2️⃣ Fetch full Razorpay payment details
         const razorpayPayment = await razorpay.payments.fetch(razorpay_payment_id);
+
+
 
         // 3️⃣ Map Razorpay fields to Payment.details
         const paymentDetails = {
@@ -433,6 +582,7 @@ export const verifyPayment = async (req, res) => {
             sendCreditReportEmail(paymentDetails.payerEmail, {
                 paymentDetails,
                 reportRequest,
+                payment,
             })
                 .then(() => console.log("Credit report email sent successfully"))
                 .catch((err) => console.log("Failed to send credit report email:", err));
@@ -711,12 +861,11 @@ export const capturePaypalPayment = async (req, res) => {
         // Optional: send email
         if (payment && payment.details?.payerEmail) {
             const reportRequest = await ReportRequest.findById(payment.reportRequest);
-            sendCreditReportEmail(payment.details.payerEmail, { payment, reportRequest });
+            sendCreditReportEmail(payment.details.payerEmail, { payment, reportRequest, payment });
         }
 
         res.json({ success: true, payment });
     } catch (error) {
-        console.error("capturePaypalPayment error:", error);
         res.status(500).json({ error: "Failed to capture PayPal payment" });
     }
 };
