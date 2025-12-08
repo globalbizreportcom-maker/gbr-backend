@@ -93,7 +93,7 @@ app.disable("x-powered-by");
 
 // Middleware
 const allowedOrigins = [
-    // "http://localhost:3000",// --dev
+    // "http://localhost:3000",// --devv
     /\.globalbizreport\.com$/,
     "https://globalbizreport.com",
     "https://www.globalbizreport.com",
