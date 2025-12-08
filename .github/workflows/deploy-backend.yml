@@ -23,7 +23,7 @@ jobs:
           script: |
             echo "🚀 Starting backend deployment on VPS..."
 
-            cd /var/www/backend
+            cd /var/www/gbr-backend
 
             # Clone repo if first time
             if [ ! -d ".git" ]; then
