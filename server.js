@@ -12,7 +12,7 @@ import axios from 'axios';
 import registrationRouter from './routes/registration.js';
 import loginRouter from './routes/login.js';
 import userRouter from './routes/User.js';
-import { capturePaypalPayment, createOrder, createPaypalOrder, handlePaymentCancelled, verifyPayment } from './controllers/paymentController.js';
+import { capturePaypalPayment, createOrder, createPaypalOrder, handlePaymentCancelled, sendPaymentCancelledEmail, verifyPayment } from './controllers/paymentController.js';
 import { checkOrCreateUser } from './controllers/userController.js';
 import multer from 'multer';
 import visitorsRouter from './routes/visitor.js';
@@ -1040,13 +1040,11 @@ export const processAbandonedPayments = async () => {
         const paymentDate = new Date(item.paymentCreatedAt);
         const diffDays = Math.floor((now - paymentDate) / (1000 * 60 * 60 * 24));
 
-        console.log(`User: ${item.email} | Diff: ${diffDays} days`);
 
         // ----------------------------------
         // 🔥 3-Day Reminder Email
         // ----------------------------------
         if (diffDays === 3) {
-            console.log("📩 Sending 3-day reminder email to", item.email);
 
             const emailData = {
                 // basic
@@ -1095,7 +1093,6 @@ export const processAbandonedPayments = async () => {
         // 🔥 10-Day Final Abandoned Email
         // ----------------------------------
         if (diffDays === 10) {
-            console.log("⚠️ Sending 10-day abandoned email to", item.email);
 
             const emailData = {
                 // basic
