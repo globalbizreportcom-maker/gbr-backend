@@ -158,7 +158,7 @@ app.post("/api/users/check-or-create", checkOrCreateUser);
 const upload = multer({ dest: "uploads/" });
 
 
-// base api 
+// base api  
 app.get("/", (req, res) => {
     res.json({ message: "Backend connected successfully ***" });
 });
