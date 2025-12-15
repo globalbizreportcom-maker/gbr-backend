@@ -143,6 +143,22 @@ margin: 0 auto;
 padding: 20px;         
 ">
 
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td align="center" style="padding-bottom: 15px;">
+            <img 
+                src="https://globalbizreport.com/images/logo-01.png" 
+                alt="Global Biz Report"
+                width="180"
+                height='50'
+                style="display: block;"
+            />
+        </td>
+    </tr>
+</table>
+
+
     <h2 style="text-align: center; margin-bottom: 5px;">Thanks for your Business Report order</h2>
     <p style="text-align: center; margin-top: 0;">
         Your order and payment details are below.
@@ -816,7 +832,7 @@ export const createPaypalOrder = async (req, res) => {
             orderId,
             amount,
             currency,
-            key: currency === "INR" ? "rzp_live_ROY0D3SgPD1pdG" : null,
+            key: currency === "INR" ? razorpay.key_id : null,
         });
 
     } catch (error) {

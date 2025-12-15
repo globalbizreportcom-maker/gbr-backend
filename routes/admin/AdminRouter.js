@@ -14,6 +14,7 @@ import csvParser from "fast-csv";
 import { Company } from "../../models/company.js";
 import stream from "stream";
 import transporter from "../../utils/Nodemailer.js";
+import axios from "axios";
 
 const adminRouter = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // keep in memory
@@ -173,6 +174,11 @@ export const getReportDetailsById = async (id) => {
 
         if (!report) return null;
 
+        // Fetch report file linked to this report request
+        const reportFile = await ReportFile.findOne({
+            reportRequest: id
+        }).select("fileUrl");
+
         const recipientName = report.requesterInfo?.name || "Valued Customer";
         const recipientEmail = report.requesterInfo?.email;
 
@@ -191,6 +197,7 @@ export const getReportDetailsById = async (id) => {
             recipientName,
             recipientEmail,
             companyDetails,
+            reportFileUrl: reportFile?.fileUrl || null,
         };
     } catch (err) {
         console.error("Error fetching report details:", err);
@@ -207,6 +214,19 @@ const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails, 
 
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; color: #333;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td align="left" style="padding-bottom: 15px;">
+            <img 
+                src="https://globalbizreport.com/images/logo-01.png" 
+                alt="Global Biz Report"
+                width="180"
+                height='50'
+                style="display: block;"
+            />
+        </td>
+    </tr>
+</table>
         <h2>Business Credit Report of ${companyDetails.companyName || ""}</h2>
         <p>Dear ${recipientName || ""},</p>
         <p>Thank you for choosing GlobalBizReport.com (GBR) and taking the time to order a freshly investigated Business Credit Report.</p>
@@ -236,12 +256,24 @@ const sendReportEmail = async ({ recipientName, recipientEmail, companyDetails, 
 
     // Build attachments array if reportFile exists
     const attachments = [];
+
     if (reportFile) {
-        attachments.push({
-            filename: `${companyDetails.companyName || "Report"}.pdf`,
-            content: reportFile,         // base64 content or buffer
-            encoding: 'base64',         // if reportFile is base64 string
-        });
+        try {
+            const response = await axios.get(reportFile, {
+                responseType: "arraybuffer",
+                timeout: 15000, // avoid hanging
+            });
+
+            attachments.push({
+                filename: `${companyDetails.companyName || "Report"}.pdf`,
+                content: Buffer.from(response.data),
+                contentType: "application/pdf",
+            });
+        } catch (fileErr) {
+            console.log("❌ Failed to fetch report file:", fileErr.message);
+            // Decide: continue WITHOUT attachment or fail
+            throw new Error("Unable to download report file");
+        }
     }
 
 
@@ -357,18 +389,23 @@ adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
         }
 
         if (status === "delivered") {
-            // Fetch report details (recipient email, company info, etc.)
-            const reportDetails = await getReportDetailsById(id);
-            if (reportDetails) {
-                // Example email sending function
-                await sendReportEmail({
-                    recipientName: reportDetails.recipientName,
-                    recipientEmail: reportDetails.recipientEmail,
-                    companyDetails: reportDetails.companyDetails,
-                    reportFile: reportDetails.reportFile, //  PDF attachment
-                });
+            try {
+                const reportDetails = await getReportDetailsById(id);
+
+                if (reportDetails) {
+                    await sendReportEmail({
+                        recipientName: reportDetails.recipientName,
+                        recipientEmail: reportDetails.recipientEmail,
+                        companyDetails: reportDetails.companyDetails,
+                        reportFile: reportDetails.reportFileUrl,
+                    });
+                }
+            } catch (error) {
+                console.log(" Error while sending report email:", error);
+                throw new Error("Failed to send report email");
             }
         }
+
 
         if (status === "in-progress") {
             // in progress email sending function
@@ -377,6 +414,7 @@ adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
 
         res.json(result);
     } catch (err) {
+        console.log(err);
         res.status(500).json({ success: false, message: "Failed to update status or send email" });
     }
 });
@@ -384,7 +422,7 @@ adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
 
 
 // Get all users
-adminRouter.get("/users", async (req, res) => {
+adminRouter.get("/users", verifyAdmin, async (req, res) => {
     try {
         const users = await User.find().sort({ createdAt: -1 }); // latest first
         res.json({ success: true, users });
@@ -394,7 +432,7 @@ adminRouter.get("/users", async (req, res) => {
 });
 
 // upload reports
-adminRouter.post("/report-files/upload", upload.single("file"), async (req, res) => {
+adminRouter.post("/report-files/upload", verifyAdmin, upload.single("file"), async (req, res) => {
     try {
         const { reportRequestId } = req.body;
 
@@ -419,7 +457,7 @@ adminRouter.post("/report-files/upload", upload.single("file"), async (req, res)
 });
 
 // payments
-adminRouter.get("/payments", async (req, res) => {
+adminRouter.get("/payments", verifyAdmin, async (req, res) => {
     try {
         const payments = await Payment.find()
             .populate({
@@ -439,7 +477,7 @@ adminRouter.get("/payments", async (req, res) => {
 });
 
 // GET all contacts, sorted by latest
-adminRouter.get("/contacts", async (req, res) => {
+adminRouter.get("/contacts", verifyAdmin, async (req, res) => {
     try {
         const contacts = await Contact.find()
             .sort({ createdAt: -1 })
@@ -452,7 +490,7 @@ adminRouter.get("/contacts", async (req, res) => {
 });
 
 // GET /api/admin/contacts/thread/:email
-adminRouter.get("/contacts/thread/:email", async (req, res) => {
+adminRouter.get("/contacts/thread/:email", verifyAdmin, async (req, res) => {
     try {
         const { email } = req.params;
         const contact = await Contact.findOne({ email });
@@ -474,7 +512,7 @@ adminRouter.get("/contacts/thread/:email", async (req, res) => {
 
 
 // POST /api/admin/contacts/:email/reply
-adminRouter.post("/contacts/thread/:email/reply", async (req, res) => {
+adminRouter.post("/contacts/thread/:email/reply", verifyAdmin, async (req, res) => {
     try {
         const { message } = req.body;
         const email = req.params.email;
@@ -505,7 +543,6 @@ adminRouter.post("/contacts/thread/:email/reply", async (req, res) => {
         res.status(500).json({ message: err.message });
     }
 });
-
 
 
 async function getCompanyCountByState(state) {
@@ -547,7 +584,7 @@ async function deleteAndhraPradeshCompanies() {
 
 
 // Logout
-adminRouter.post("/logout", (req, res) => {
+adminRouter.post("/logout", verifyAdmin, (req, res) => {
     // Clear the cookie
     res.clearCookie("gbr_admin", {
         httpOnly: true,
