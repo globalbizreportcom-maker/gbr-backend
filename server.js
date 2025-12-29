@@ -160,7 +160,7 @@ const upload = multer({ dest: "uploads/" });
 
 // base api  
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully ***" });
+    res.json({ message: "Backend connected successfully **" });
 });
 
 app.get("/companies-meta", metaLimiter, (req, res) => {
@@ -1140,20 +1140,20 @@ export const processAbandonedPayments = async () => {
 };
 
 
-const job = new CronJob(
-    '0 9 * * *', // 9 AM every day
-    async () => {
-        console.log("Running job at 9 AM US Eastern");
-        try {
-            await processAbandonedPayments();
-        } catch (err) {
-            console.error("Error in abandoned payments cron:", err);
-        }
-    },
-    null, // onComplete
-    true, // start immediately
-    "America/New_York" // timezone
-);
+// const job = new CronJob(
+//     '0 9 * * *', // 9 AM every day
+//     async () => {
+//         console.log("Running job at 9 AM US Eastern");
+//         try {
+//             await processAbandonedPayments();
+//         } catch (err) {
+//             console.error("Error in abandoned payments cron:", err);
+//         }
+//     },
+//     null, // onComplete
+//     true, // start immediately
+//     "America/New_York" // timezone
+// );
 
 
 
