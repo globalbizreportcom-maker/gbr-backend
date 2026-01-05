@@ -8,13 +8,13 @@ import transporter from "../utils/Nodemailer.js";
 import User from "../models/User.js";
 import { agenda } from "../agenda.js";
 
-// Move keys to .env in production
+// test
 // const razorpay = new Razorpay({
 //     key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_RLLP7cC84Ep2ms',
 //     key_secret: process.env.RAZORPAY_KEY_SECRET || 'lCg8ZeIBhKQ93v9CDmZ4QrS2',
 // });
 
-
+// production
 const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID || 'rzp_live_ROY0D3SgPD1pdG',
     key_secret: process.env.RAZORPAY_KEY_SECRET || '2wUhDOwdqHHTkTGLCNZobfvr',
@@ -583,6 +583,8 @@ export const verifyPayment = async (req, res) => {
             { new: true }
         );
 
+        console.log(payment);
+
         if (!payment) {
             return res.status(404).json({ success: false, message: "Payment record not found" });
         }
@@ -604,9 +606,10 @@ export const verifyPayment = async (req, res) => {
                 .catch((err) => console.log("Failed to send credit report email:", err));
         }
 
+
         res.json({ success: true, message: "Payment verified successfully", payment });
     } catch (error) {
-        console.error("❌ Razorpay payment verification error:", error);
+        console.log("❌ Razorpay payment verification error:", error);
         res.status(500).json({ error: "Payment verification failed" });
     }
 };
