@@ -27,20 +27,20 @@ import ReportRequest from './models/ReportRequest.js';
 const db = new Database("./sqldb/companies.db");
 dotenv.config();
 
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_company_name_nocase
-  ON companies(CompanyName COLLATE NOCASE);
-  CREATE INDEX IF NOT EXISTS idx_company_state_nocase
-  ON companies(CompanyStateCode COLLATE NOCASE);
-  CREATE INDEX IF NOT EXISTS idx_company_industry_nocase
-  ON companies(CompanyIndustrialClassification COLLATE NOCASE);
-  CREATE INDEX IF NOT EXISTS idx_company_class_nocase
-  ON companies(CompanyClass COLLATE NOCASE);
-  CREATE INDEX IF NOT EXISTS idx_company_status_nocase
-  ON companies(CompanyStatus COLLATE NOCASE);
-`);
+// db.exec(`
+//   CREATE INDEX IF NOT EXISTS idx_company_name_nocase
+//   ON companies(CompanyName COLLATE NOCASE);
+//   CREATE INDEX IF NOT EXISTS idx_company_state_nocase
+//   ON companies(CompanyStateCode COLLATE NOCASE);
+//   CREATE INDEX IF NOT EXISTS idx_company_industry_nocase
+//   ON companies(CompanyIndustrialClassification COLLATE NOCASE);
+//   CREATE INDEX IF NOT EXISTS idx_company_class_nocase
+//   ON companies(CompanyClass COLLATE NOCASE);
+//   CREATE INDEX IF NOT EXISTS idx_company_status_nocase
+//   ON companies(CompanyStatus COLLATE NOCASE);
+// `);
 
-console.log("Indexes created ✅");
+// console.log("Indexes created ✅");
 
 const app = express();
 
