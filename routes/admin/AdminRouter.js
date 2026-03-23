@@ -15,6 +15,7 @@ import { Company } from "../../models/company.js";
 import stream from "stream";
 import transporter from "../../utils/Nodemailer.js";
 import axios from "axios";
+import ClaimCompanyPayment from "../../models/ClaimCompanyPayment.js";
 
 const adminRouter = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // keep in memory
@@ -544,6 +545,56 @@ adminRouter.post("/contacts/thread/:email/reply", verifyAdmin, async (req, res) 
     }
 });
 
+// fetch claimed company collections
+adminRouter.get("/company-claimed-payments", async (req, res) => {
+    try {
+
+        const payments = await ClaimCompanyPayment
+            .find()
+            .populate("userId", "name email phone country state city pincode company") // 👈 only needed fields
+            .sort({ createdAt: -1 });
+
+        res.json({ payments });
+
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({
+            message: "Failed to fetch payments"
+        });
+    }
+});
+
+// update claim status
+adminRouter.patch("/company-claimed-payments/:id", verifyAdmin, async (req, res) => {
+    const { id } = req.params;
+    const { claimStatus } = req.body;
+
+    if (!claimStatus) {
+        return res.status(400).json({ error: "claimStatus is required" });
+    }
+
+    try {
+        const payment = await ClaimCompanyPayment.findById(id);
+
+        if (!payment) {
+            return res.status(404).json({ error: "Claimed payment not found" });
+        }
+
+        payment.claimStatus = claimStatus;
+        await payment.save();
+
+        return res.json({
+            success: true,
+            message: "Claim status updated successfully",
+            payment,
+        });
+    } catch (err) {
+        console.error("Error updating claim status:", err);
+        return res.status(500).json({ error: "Failed to update claim status" });
+    }
+});
+
+
 
 async function getCompanyCountByState(state) {
     if (!state) throw new Error("State is required");
@@ -581,6 +632,28 @@ async function deleteAndhraPradeshCompanies() {
 
 // Call the function
 // deleteAndhraPradeshCompanies();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 // Logout

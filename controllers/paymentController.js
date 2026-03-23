@@ -7,6 +7,7 @@ import paypal from "@paypal/checkout-server-sdk";
 import transporter from "../utils/Nodemailer.js";
 import User from "../models/User.js";
 import { agenda } from "../agenda.js";
+import ClaimCompanyPayment from "../models/ClaimCompanyPayment.js";
 
 // test
 // const razorpay = new Razorpay({
@@ -250,8 +251,6 @@ padding: 20px;
         console.error("Error sending email:", err);
     }
 }
-
-
 
 export const sendPaymentCancelledEmail = async (userId, visitorData) => {
     try {
@@ -613,6 +612,229 @@ export const verifyPayment = async (req, res) => {
         res.status(500).json({ error: "Payment verification failed" });
     }
 };
+
+
+
+
+// Create claim company order
+export const createClaimCompanyOrder = async (req, res) => {
+    try {
+
+        const { userId, companyName, cin, address, amount, formData } = req.body;
+
+        console.log(formData);
+
+        if (!userId || !companyName || !cin || !address || !amount) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing required fields"
+            });
+        }
+
+        // Update user details (only if values exist)
+        const updateFields = {};
+
+        if (formData?.contactCountry) updateFields.country = formData.contactCountry;
+        if (formData?.contactState) updateFields.state = formData.contactState;
+        if (formData?.city) updateFields.city = formData.city;
+        if (formData?.postalCode) updateFields.pincode = formData.postalCode;
+        if (formData?.companyGst) updateFields.gstin = formData.companyGst;
+
+
+        if (Object.keys(updateFields).length > 0) {
+            await User.findByIdAndUpdate(userId, {
+                $set: updateFields
+            });
+        }
+
+
+        // Prevent duplicate paid claims
+        const existing = await ClaimCompanyPayment.findOne({
+            "company.cin": cin,
+            paymentStatus: "paid"
+        });
+
+        if (existing) {
+            return res.status(400).json({
+                success: false,
+                message: "Company already claimed"
+            });
+        }
+
+        // Razorpay order
+        const order = await razorpay.orders.create({
+            amount,
+            currency: "INR",
+            receipt: `claim_${Date.now()}`
+        });
+
+        // Save document
+        const payment = await ClaimCompanyPayment.create({
+            userId,
+            company: {
+                name: companyName,
+                cin,
+                address
+            },
+            amount,
+            razorpayOrderId: order.id,
+            paymentStatus: "created"
+        });
+
+        res.status(200).json({
+            success: true,
+            order,
+            key: razorpay.key_id,
+            paymentId: payment._id
+        });
+
+    } catch (error) {
+
+        console.log("Create order error:", error);
+
+        res.status(500).json({
+            success: false,
+            message: "Order creation failed"
+        });
+
+    }
+};
+
+export const verifyClaimCompanyPayment = async (req, res) => {
+
+    try {
+
+        const {
+            razorpay_payment_id,
+            razorpay_order_id,
+            razorpay_signature
+        } = req.body;
+
+        const body = razorpay_order_id + "|" + razorpay_payment_id;
+
+        const expectedSignature = crypto
+            .createHmac("sha256", razorpay.key_secret)
+            .update(body.toString())
+            .digest("hex");
+
+        const isValid = expectedSignature === razorpay_signature;
+
+        if (!isValid) {
+
+            await ClaimCompanyPayment.findOneAndUpdate(
+                { razorpayOrderId: razorpay_order_id },
+                { paymentStatus: "failed" }
+            );
+
+            return res.status(400).json({
+                success: false,
+                message: "Invalid payment signature"
+            });
+        }
+
+        // Update payment success
+        const paymentDoc = await ClaimCompanyPayment.findOneAndUpdate(
+            { razorpayOrderId: razorpay_order_id },
+            {
+                razorpayPaymentId: razorpay_payment_id,
+                razorpaySignature: razorpay_signature,
+                paymentStatus: "paid",
+                claimStatus: 'approved' // future it should be intended for the purpose of verification
+            },
+            { new: true }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: "Payment verified",
+            payment: paymentDoc
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            success: false,
+            message: "Payment verification failed"
+        });
+
+    }
+
+};
+
+export const markClaimPaymentFailed = async (req, res) => {
+
+    try {
+
+        const { razorpay_order_id } = req.body;
+        await ClaimCompanyPayment.findOneAndUpdate(
+            { razorpayOrderId: razorpay_order_id },
+            { paymentStatus: "failed" }
+        );
+
+        res.status(200).json({
+            success: true
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            success: false
+        });
+
+    }
+
+};
+
+export const claimCompanyOrderVerification = async (req, res) => {
+
+    const { razorpayPaymentId } = req.body;
+
+    if (!razorpayPaymentId) {
+
+        return res.status(400).json({ success: false, message: "Payment ID is required" });
+    }
+
+    try {
+
+        // Check if paymentId exists in DB
+        const payment = await ClaimCompanyPayment.findOne({ razorpayPaymentId });
+
+        if (!payment) {
+            return res.status(404).json({ success: false, message: "Payment not found" });
+        }
+
+        // Optional: You can also verify paymentStatus or claimStatus
+        if (payment.paymentStatus !== "paid") {
+            return res.status(400).json({ success: false, message: "Payment not completed" });
+        }
+
+        // Payment is valid
+        res.status(200).json({ success: true, payment });
+    } catch (error) {
+        res.status(500).json({ success: false, message: "Server error" });
+    }
+
+
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 // PayPal environment

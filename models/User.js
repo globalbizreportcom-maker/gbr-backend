@@ -28,6 +28,10 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: [false, "State is required"],
         },
+        city: {
+            type: String,
+            required: [false, "State is required"],
+        },
         password: {
             type: String,
             required: [false, "Password is required"],
@@ -39,7 +43,11 @@ const userSchema = new mongoose.Schema(
         gstin: {
             type: String,
             required: [false, "gstin is required"],
-        }
+        },
+        pincode: {
+            type: String,
+            required: [false, "Company is required"],
+        },
     },
     { timestamps: true }
 );

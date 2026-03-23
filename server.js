@@ -12,8 +12,8 @@ import axios from 'axios';
 import registrationRouter from './routes/registration.js';
 import loginRouter from './routes/login.js';
 import userRouter from './routes/User.js';
-import { capturePaypalPayment, createOrder, createPaypalOrder, handlePaymentCancelled, sendPaymentCancelledEmail, verifyPayment } from './controllers/paymentController.js';
-import { checkOrCreateUser } from './controllers/userController.js';
+import { capturePaypalPayment, claimCompanyOrderVerification, createClaimCompanyOrder, createOrder, createPaypalOrder, handlePaymentCancelled, markClaimPaymentFailed, sendPaymentCancelledEmail, verifyClaimCompanyPayment, verifyPayment } from './controllers/paymentController.js';
+import { checkOrCreateUser, checkUserOrSendOTP, verifyOTPAndCreateUser } from './controllers/userController.js';
 import multer from 'multer';
 import visitorsRouter from './routes/visitor.js';
 import fs from "fs";
@@ -24,6 +24,8 @@ import User from './models/User.js';
 import ReportRequest from './models/ReportRequest.js';
 
 import pkg from "pg";
+import CompanyEdit from './models/CompanyEdit.js';
+import ClaimCompanyPayment from './models/ClaimCompanyPayment.js';
 const { Pool } = pkg;
 
 
@@ -155,18 +157,27 @@ app.use("/visitors", visitorsRouter);
 // Razorpay
 app.post("/api/payment/create-order", createOrder);
 app.post("/api/payment/verify", verifyPayment);
+
 // PayPal
 app.post("/api/payment/create-paypal-order", createPaypalOrder);
 app.post("/api/payment/capture-paypal", capturePaypalPayment);
+
 // failed orders
 app.post("/api/payment/cancellation", handlePaymentCancelled);
 
+// check if user exists or not, else create one
 app.post("/api/users/check-or-create", checkOrCreateUser);
+app.post("/api/users/check-user", checkUserOrSendOTP);
+app.post("/api/users/verify-otp", verifyOTPAndCreateUser);
+
+// claim company payments
+app.post("/claim-company/create-order", createClaimCompanyOrder);
+app.post("/claim-company/payment-verify", verifyClaimCompanyPayment);
+app.post("/claim-company/order-verify", claimCompanyOrderVerification);
+app.post("/claim-company/payment-failed", markClaimPaymentFailed);
 
 // Folder to store uploaded files temporarily
 const upload = multer({ dest: "uploads/" });
-
-
 
 
 // PostgreSQL client setup
@@ -181,25 +192,21 @@ const pool = new Pool({
 });
 
 // Connect once when the server starts
-(async () => {
-    try {
-        await pool.connect();
-        console.log("Connected to PostgreSQL!");
-    } catch (err) {
-        console.log("Connection failed:");
-        console.log(err);
-    }
-})();
-
-
-
-
+// (async () => {
+//     try {
+//         await pool.connect();
+//         console.log("Connected to PostgreSQL!");
+//     } catch (err) {
+//         console.log("Connection failed:");
+//         console.log(err);
+//     }
+// })();
 
 
 
 // base api  
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully ___" });
+    res.json({ message: "Backend connected successfully _*_" });
 });
 
 app.get('/api/companies/search', async (req, res) => {
@@ -225,19 +232,6 @@ app.get('/api/companies/search', async (req, res) => {
         res.status(500).json({ error: 'Failed to fetch companies' });
     }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 // PostgreSQL version of /companies-meta
@@ -270,12 +264,14 @@ app.get("/companies-directory", companiesLimiter, async (req, res) => {
         const result = await pool.query(query, [Number(lastId), Number(perPage)]);
         res.json({ success: true, rows: result.rows });
     } catch (err) {
-        console.error("Error in /companies-directory:", err);
         res.status(500).json({ error: "Server error." });
     }
 });
 
-// PostgreSQL company details page
+// // PostgreSQL company details page
+
+// PostgreSQL + MongoDB company details page
+
 app.get("/api/company-details", metaLimiter, async (req, res) => {
     const { cin } = req.query;
 
@@ -284,152 +280,138 @@ app.get("/api/company-details", metaLimiter, async (req, res) => {
     }
 
     try {
-        const result = await pool.query(
+        // 1️⃣ Fetch company from Postgres
+        const pgResult = await pool.query(
             `SELECT * FROM companies WHERE cin = $1`,
             [cin]
         );
 
-        if (result.rows.length === 0) {
+        if (pgResult.rows.length === 0) {
             return res.status(404).json({ error: "Company not found" });
         }
 
-        res.status(200).send(result.rows[0]); // return single object, since CIN is unique
+        const companyData = pgResult.rows[0];
+
+        // 2️⃣ Fetch company edit from MongoDB (if exists)
+        const companyEdit = await CompanyEdit.findOne({ companyId: cin }).lean();
+
+        const isClamied = await ClaimCompanyPayment.findOne({ 'company.cin': cin, paymentStatus: 'paid' }).lean();
+
+        // 3️⃣ Merge both in response
+        res.status(200).json({
+            claimedCompany: isClamied ? true : false,
+            data: {
+                postgres: companyData,   // original company data from PostgreSQL
+                editedCompany: companyEdit || null, // edited data from MongoDB, or null if not exists
+            },
+        });
+
     } catch (err) {
-        console.error("Error fetching company by CIN:", err);
-        res.status(500).json({ error: "Database error" });
+        res.status(500).json({ error: "Server error" });
     }
 });
 
+
 app.get("/search-companies", companiesLimiter, async (req, res) => {
     try {
-        let { company = "", country = "", state = "", page = 1, perPage = 20 } = req.query;
+        let { company = "", state = "", page = 1, perPage = 20 } = req.query;
 
-        page = Number(page);
-        perPage = Number(perPage);
+        page = Number(page) || 1;
+        perPage = Number(perPage) || 20;
         const offset = (page - 1) * perPage;
 
-        const normalizedCountry = country.trim().toLowerCase();
-        const normalizedState = state.trim().toLowerCase();
-        const hasCompany = company.trim().length > 0;
-        const hasState = normalizedCountry === "india" && normalizedState.length > 0;
+        const conditions = [];
+        const values = [];
 
-        let rows = [];
-        let totalRows = 0;
+        let searchQueryIndex = null;
 
-        const useFTS = hasCompany && company.trim().length >= 3; // FTS only for >=3 chars
+        //  1. SEARCH (FTS with ranking)
+        if (company.trim().length >= 3) {
+            values.push(company.trim());
+            searchQueryIndex = values.length;
 
-        if (useFTS) {
-            // ✅ 1. Clean up the query safely
-            const cleanFTSQuery = (str) =>
-                str
-                    .replace(/[^\w\s]/g, " ") // remove punctuation
-                    .replace(/\s+/g, " ")     // collapse multiple spaces
-                    .trim()
-                    .toLowerCase();
-
-            const cleanedCompany = cleanFTSQuery(company);
-
-            if (!cleanedCompany) {
-                res.json({ totalRows: 0, totalPages: 0, page, perPage, rows: [] });
-                return;
-            }
-
-            // ✅ 2. Build FTS query for PostgreSQL
-            // Convert to tsquery: split words and join with & for AND search
-            const ftsKeyword = cleanedCompany
-                .split(/\s+/)
-                .map(k => `${k}:*`) // prefix match
-                .join(" & ");
-
-            const whereParts = [`to_tsvector('english', "companyname") @@ to_tsquery('english', $1)`];
-            const values = [ftsKeyword];
-
-            if (hasState) {
-                values.push(normalizedState);
-                whereParts.push(`LOWER(TRIM("CompanyStateCode")) = $2`);
-            }
-
-            const whereClause = whereParts.join(" AND ");
-
-            // ✅ 3. Total count
-            const totalResult = await pool.query(
-                `SELECT COUNT(*) AS total
-                 FROM companies
-                 WHERE ${whereClause}`,
-                values
+            conditions.push(
+                `search_vector @@ plainto_tsquery('simple', $${searchQueryIndex})`
             );
-            totalRows = parseInt(totalResult.rows[0].total);
-
-            // ✅ 4. Fetch rows
-            const rowsResult = await pool.query(
-                `SELECT *
-                 FROM companies
-                 WHERE ${whereClause}
-                 ORDER BY "companyname" ASC
-                 LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
-                [...values, perPage, offset]
-            );
-            rows = rowsResult.rows;
-
-            // ✅ 5. Fallback to LIKE if no results
-            if (rows.length === 0) {
-                const likeValues = [`${company}%`];
-                let likeClause = `"companyname" ILIKE $1`;
-                if (hasState) {
-                    likeValues.push(normalizedState);
-                    likeClause += ` AND LOWER(TRIM("CompanyStateCode")) = $2`;
-                }
-
-                const totalLikeResult = await pool.query(
-                    `SELECT COUNT(*) AS total
-                     FROM companies
-                     WHERE ${likeClause}`,
-                    likeValues
-                );
-                totalRows = parseInt(totalLikeResult.rows[0].total);
-
-                const rowsLikeResult = await pool.query(
-                    `SELECT *
-                     FROM companies
-                     WHERE ${likeClause}
-                     ORDER BY "companyname" ASC
-                     LIMIT $${likeValues.length + 1} OFFSET $${likeValues.length + 2}`,
-                    [...likeValues, perPage, offset]
-                );
-                rows = rowsLikeResult.rows;
-            }
-        } else {
-            // LIKE search for short queries
-            const likeValues = [`${company}%`];
-            let likeClause = `"companyname" ILIKE $1`;
-            if (hasState) {
-                likeValues.push(normalizedState);
-                likeClause += ` AND LOWER(TRIM("companystatecode")) = $2`;
-            }
-
-            const totalLikeResult = await pool.query(
-                `SELECT COUNT(*) AS total
-                 FROM companies
-                 WHERE ${likeClause}`,
-                likeValues
-            );
-            totalRows = parseInt(totalLikeResult.rows[0].total);
-
-            const rowsLikeResult = await pool.query(
-                `SELECT *
-                 FROM companies
-                 WHERE ${likeClause}
-                 ORDER BY "companyname" ASC
-                 LIMIT $${likeValues.length + 1} OFFSET $${likeValues.length + 2}`,
-                [...likeValues, perPage, offset]
-            );
-            rows = rowsLikeResult.rows;
+        }
+        //  fallback for short input
+        else if (company.trim().length > 0) {
+            values.push(`${company.trim()}%`);
+            conditions.push(`LOWER("companyname") LIKE LOWER($${values.length})`);
         }
 
+        //  2. STATE FILTER (FIXED 🔥)
+        if (state.trim()) {
+            values.push(state.trim().toLowerCase());
+
+            conditions.push(`
+                LOWER(TRIM("companystatecode")) = $${values.length}
+            `);
+        }
+
+
+        const whereClause = conditions.length
+            ? `WHERE ${conditions.join(" AND ")}`
+            : "";
+
+        // ✅ 3. ORDER BY (SMART)
+        let orderBy = `ORDER BY "companyname" ASC`;
+
+        if (searchQueryIndex) {
+            orderBy = `
+                ORDER BY ts_rank(
+                    search_vector,
+                    plainto_tsquery('simple', $${searchQueryIndex})
+                ) DESC
+            `;
+        }
+
+        // ✅ ADD THIS CONDITION
+        if (!state.trim()) {
+            orderBy = `
+        ORDER BY 
+            "companystatecode" ASC,
+            "companyname" ASC
+    `;
+        }
+
+        // ✅ 4. DATA QUERY
+        const dataQuery = `
+            SELECT companyname, cin, companystatecode, companystatus,
+            companystatecode AS "CompanyStateCode","CompanyIndian/Foreign Company"
+            FROM companies
+            ${whereClause}
+            ${orderBy}
+            LIMIT $${values.length + 1}
+            OFFSET $${values.length + 2}
+        `;
+
+        const dataResult = await pool.query(dataQuery, [
+            ...values,
+            perPage,
+            offset,
+        ]);
+
+        // ✅ 5. COUNT QUERY
+        const countQuery = `
+            SELECT COUNT(*) AS total
+            FROM companies
+            ${whereClause}
+        `;
+
+        const countResult = await pool.query(countQuery, values);
+        const totalRows = parseInt(countResult.rows[0].total);
         const totalPages = Math.ceil(totalRows / perPage);
-        res.json({ totalRows, totalPages, page, perPage, rows });
+
+        res.json({
+            rows: dataResult.rows,
+            totalRows,
+            totalPages,
+            page,
+            perPage,
+        });
+
     } catch (err) {
-        console.error(err);
         res.status(500).json({ error: "Server error" });
     }
 });
@@ -498,7 +480,6 @@ app.get("/user/companies-dir", fastLimiter, async (req, res) => {
         });
 
     } catch (err) {
-        console.error("Companies Fast Error:", err);
         res.status(500).json({
             rows: [],
             totalPages: 0,
@@ -507,6 +488,34 @@ app.get("/user/companies-dir", fastLimiter, async (req, res) => {
         });
     }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 const createAdminManually = async () => {

@@ -4,10 +4,37 @@ import mongoose from "mongoose";
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import transporter from "../utils/Nodemailer.js";
+
+
+const otpStore = new Map();
+
+// ✅ Reusable mail function
+export const sendMail = async ({ to, subject, text, html }) => {
+    try {
+        console.log(to, subject, text);
+        const mailOptions = {
+            from: '"GlobalBizReport" <no-reply@globalbizreport.com>',
+            to,
+            subject,
+            text,
+            html
+        };
+
+        const info = await transporter.sendMail(mailOptions);
+
+        return info;
+    } catch (error) {
+        console.log("Mail Error:", error);
+        throw new Error("Failed to send email");
+    }
+};
 
 export const checkOrCreateUser = async (req, res) => {
     try {
-        const { name, email, country, phone, company, gst } = req.body;
+        const { name, email, country, state, city, phone, company, gst } = req.body;
+
         if (!email || !name) {
             return res.status(400).json({ error: "Name and Email are required" });
         }
@@ -23,6 +50,8 @@ export const checkOrCreateUser = async (req, res) => {
             name,
             email,
             country: country,
+            state: state,
+            city: city || '',
             phone: phone || "",
             company: company || "",
             gstin: gst
@@ -44,6 +73,117 @@ export const checkOrCreateUser = async (req, res) => {
         });
 
         return res.status(201).json({ exists: false, message: "New user created", user });
+    } catch (error) {
+        res.status(500).json({ error: "Server error" });
+    }
+};
+
+export const checkUserOrSendOTP = async (req, res) => {
+    try {
+        const { name, email, country, state, city, phone, company, gst } = req.body;
+
+        if (!email || !name) {
+            return res.status(400).json({ error: "Name and Email are required" });
+        }
+
+        const existingUser = await User.findOne({ email });
+
+        if (existingUser) {
+            return res.status(200).json({
+                exists: true,
+                message: "User already exists, kindly login"
+            });
+        }
+
+        // 🔑 Generate OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // 🧠 Store in memory
+        otpStore.set(email, {
+            otp,
+            expiresAt: Date.now() + 5 * 60 * 1000 // 5 mins
+        });
+
+        // 📧 Send email
+        await sendMail({
+            to: email,
+            subject: "Your OTP Code",
+            text: `Your OTP is ${otp}`,
+            html: `
+            <div style="font-family: Arial; padding: 20px;">
+                <h2 style="color:#333;">GBR Verification</h2>
+                <p>Your OTP code is:</p>
+                <h1 style="letter-spacing: 5px;">${otp}</h1>
+                <p>This OTP is valid for 5 minutes.</p>
+            </div>
+            `
+        });
+
+        return res.status(200).json({
+            exists: false,
+            message: "OTP sent to email"
+        });
+
+    } catch (error) {
+        console.log(error);
+        res.status(500).json({ error: "Server error" });
+    }
+};
+
+export const verifyOTPAndCreateUser = async (req, res) => {
+    try {
+        const { name, email, otp, country, state, city, phone, company, gst } = req.body;
+
+        const record = otpStore.get(email);
+
+        if (!record) {
+            return res.status(400).json({ error: "OTP not found" });
+        }
+
+        if (record.expiresAt < Date.now()) {
+            otpStore.delete(email);
+            return res.status(400).json({ error: "OTP expired" });
+        }
+
+        if (record.otp !== otp) {
+            return res.status(400).json({ error: "Invalid OTP" });
+        }
+
+        // ✅ Create user
+        const user = await User.create({
+            name,
+            email,
+            country,
+            state,
+            city: city || '',
+            phone: phone || "",
+            company: company || "",
+            gstin: gst
+        });
+
+        // 🔑 JWT
+        const token = jwt.sign(
+            { email: user.email, id: user._id },
+            process.env.JWT_SECRET,
+            { expiresIn: "30d" }
+        );
+
+        // 🍪 Cookie
+        res.cookie("gbr_user", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 30 * 24 * 60 * 60 * 1000
+        });
+
+        // 🧹 Clean OTP
+        otpStore.delete(email);
+
+        return res.status(201).json({
+            message: "User created successfully",
+            user
+        });
+
     } catch (error) {
         res.status(500).json({ error: "Server error" });
     }
