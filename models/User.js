@@ -40,6 +40,10 @@ const userSchema = new mongoose.Schema(
             type: String,
             required: [false, "Company is required"],
         },
+        desingation: {
+            type: String,
+            required: [false, "Company is required"],
+        },
         gstin: {
             type: String,
             required: [false, "gstin is required"],

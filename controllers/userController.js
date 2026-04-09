@@ -33,7 +33,7 @@ export const sendMail = async ({ to, subject, text, html }) => {
 
 export const checkOrCreateUser = async (req, res) => {
     try {
-        const { name, email, country, state, city, phone, company, gst } = req.body;
+        const { name, email, country, state, city, phone, company, designation, gst } = req.body;
 
         if (!email || !name) {
             return res.status(400).json({ error: "Name and Email are required" });
@@ -54,7 +54,8 @@ export const checkOrCreateUser = async (req, res) => {
             city: city || '',
             phone: phone || "",
             company: company || "",
-            gstin: gst
+            gstin: gst,
+            designation
         });
 
         // 🔑 Create JWT token
@@ -132,8 +133,8 @@ export const checkUserOrSendOTP = async (req, res) => {
 
 export const verifyOTPAndCreateUser = async (req, res) => {
     try {
-        const { name, email, otp, country, state, city, phone, company, gst } = req.body;
-
+        const { name, email, otp, country, state, city, phone, company, designation, gst } = req.body;
+        console.log(req.body);
         const record = otpStore.get(email);
 
         if (!record) {
@@ -158,7 +159,8 @@ export const verifyOTPAndCreateUser = async (req, res) => {
             city: city || '',
             phone: phone || "",
             company: company || "",
-            gstin: gst
+            gstin: gst,
+            designation,
         });
 
         // 🔑 JWT

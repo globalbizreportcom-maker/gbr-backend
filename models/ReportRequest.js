@@ -27,7 +27,7 @@ const ReportRequestSchema = new mongoose.Schema({
     agreementAccepted: { type: Boolean, default: false },
     status: {
         type: String,
-        enum: ["initiated", "in-progress", "completed", "delivered"],
+        enum: ["initiated", "in-progress", "completed", "delivered", "cancelled", "refunded"],
         default: "initiated",
     },
 }, { timestamps: true });

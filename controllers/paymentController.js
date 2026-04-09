@@ -491,7 +491,7 @@ export const createOrder = async (req, res) => {
 
         // 6️⃣ Create Razorpay order only for INR
         let order = null;
-        if (currency === "INR") {
+        if (currency === "INR" || currency === "USD") {
             order = await razorpay.orders.create({
                 amount: totalAmount * 100,
                 currency,
@@ -507,7 +507,7 @@ export const createOrder = async (req, res) => {
             amount: totalAmount,
             currency,
             status: "created",
-            method: currency === "INR" ? "razorpay" : "offline",
+            method: 'razorpay',
             details: {
                 ...req.body.details,
                 receipt: order?.receipt,
@@ -519,7 +519,7 @@ export const createOrder = async (req, res) => {
         // 8️⃣ Respond
         res.json({ orderId: order?.id || null, amount: totalAmount, currency, key: razorpay.key_id });
     } catch (error) {
-        console.error("createOrder error:", error);
+        console.log("createOrder error:", error);
         res.status(500).json({ error: "Failed to create order" });
     }
 };
@@ -582,7 +582,6 @@ export const verifyPayment = async (req, res) => {
             { new: true }
         );
 
-        console.log(payment);
 
         if (!payment) {
             return res.status(404).json({ success: false, message: "Payment record not found" });
@@ -621,9 +620,6 @@ export const createClaimCompanyOrder = async (req, res) => {
     try {
 
         const { userId, companyName, cin, address, amount, formData } = req.body;
-
-        console.log(formData);
-
         if (!userId || !companyName || !cin || !address || !amount) {
             return res.status(400).json({
                 success: false,
@@ -631,15 +627,23 @@ export const createClaimCompanyOrder = async (req, res) => {
             });
         }
 
-        // Update user details (only if values exist)
+
+        // Update user details (extracting the string labels from the objects)
         const updateFields = {};
 
-        if (formData?.contactCountry) updateFields.country = formData.contactCountry;
-        if (formData?.contactState) updateFields.state = formData.contactState;
+        if (formData?.contactCountry) {
+            // Check if it's an object and take the label/value, otherwise use the value as is
+            updateFields.country = formData.contactCountry.label || formData.contactCountry;
+        }
+
+        if (formData?.contactState) {
+            updateFields.state = formData.contactState.label || formData.contactState;
+        }
+
         if (formData?.city) updateFields.city = formData.city;
         if (formData?.postalCode) updateFields.pincode = formData.postalCode;
         if (formData?.companyGst) updateFields.gstin = formData.companyGst;
-
+        if (formData?.desingation) updateFields.desingation = formData.desingation;
 
         if (Object.keys(updateFields).length > 0) {
             await User.findByIdAndUpdate(userId, {
@@ -663,7 +667,7 @@ export const createClaimCompanyOrder = async (req, res) => {
 
         // Razorpay order
         const order = await razorpay.orders.create({
-            amount,
+            amount: 90000,
             currency: "INR",
             receipt: `claim_${Date.now()}`
         });
@@ -676,7 +680,7 @@ export const createClaimCompanyOrder = async (req, res) => {
                 cin,
                 address
             },
-            amount,
+            amount: 90000,
             razorpayOrderId: order.id,
             paymentStatus: "created"
         });
