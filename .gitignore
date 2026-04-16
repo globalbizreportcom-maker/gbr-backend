@@ -1,6 +1,8 @@
 # Ignore your SQL database folder
 data/
 
+node_modules/
+
 sqldb/
 *.db
 *.db-shm

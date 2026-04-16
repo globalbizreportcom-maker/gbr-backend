@@ -16,9 +16,149 @@ import stream from "stream";
 import transporter from "../../utils/Nodemailer.js";
 import axios from "axios";
 import ClaimCompanyPayment from "../../models/ClaimCompanyPayment.js";
+import { razorpay } from "../../controllers/paymentController.js";
+import htmlPdf from "html-pdf-node";
+
+
 
 const adminRouter = express.Router();
-const upload = multer({ storage: multer.memoryStorage() }); // keep in memory
+const upload = multer({ storage: multer.memoryStorage() }); // keep  in memory
+
+
+async function downloadInvoiceAsBlob({ paymentDetails, reportRequest, payment }) {
+    // 1. Destructure Info (same as your original code)
+    const { name, email, requesterCompany, requesterCountry, gst } = reportRequest?.requesterInfo || {};
+    const totalAmount = payment?.amount || 0;
+    let businessAmount, gstAmount;
+
+    // 2. Logic for Inclusive GST
+    if (payment?.currency === "INR") {
+        businessAmount = (totalAmount / 1.18).toFixed(2);
+        gstAmount = (totalAmount - businessAmount).toFixed(2);
+    } else {
+        gstAmount = null;
+        businessAmount = totalAmount;
+    }
+
+    const htmlContent = `
+<div style="
+font-family: Arial, sans-serif; 
+font-size: 14px; 
+color: #333; 
+max-width: 680px;      
+margin: 0 auto;       
+padding: 20px;         
+">
+
+<table width="100%" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td align="center" style="padding-bottom: 15px;">
+            <img 
+                src="https://globalbizreport.com/images/logo-01.png" 
+                alt="Global Biz Report"
+                width="180"
+                height='50'
+                style="display: block;"
+            />
+        </td>
+    </tr>
+</table>
+
+    <h2 style="text-align: center; margin-bottom: 5px;">Thanks for your Business Report order</h2>
+    <p style="text-align: center; margin-top: 0;">
+        Your order and payment details are below.
+    </p>
+
+    <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;" />
+
+    <h3 style="text-align: center; margin-bottom: 10px;">YOUR ORDER DETAILS</h3>
+
+    <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
+        <tr>
+        <td width="50%" valign="top">
+        <strong>Billed To</strong><br /><br />
+    
+        ${name ? `${name}<br />` : ''}
+        ${email ? `${email}<br />` : ''}
+        ${requesterCompany ? `${requesterCompany}<br />` : ''}
+        ${requesterCountry ? `${requesterCountry}<br />` : ''}
+        ${gst ? `GSTIN: ${gst}<br />` : ''}
+    </td>
+    
+            <td width="50%" valign="top">
+                <strong>Issued By</strong><br /><br />
+                GLOBAL BIZ REPORT<br />
+                TECHCENT INNOVATIONS<br />
+                UNIT NO. M-1, 1ST FLOOR,<br />
+                LANDMARK CYBER PARK,<br />
+                SECTOR-67, GURUGRAM, HARYANA - 122102<br />
+                GSTIN: 06AKRPB9332P1ZK
+            </td>
+        </tr>
+    </table>
+
+    <br />
+
+    <h3 style="margin-top: 20px;">Invoice Details</h3>
+
+    <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
+        <tr>
+            <td>Order ID: <strong>${payment?.orderId || '-'}</strong></td>
+        </tr>
+        <tr>
+            <td>Date: <strong>${payment?.createdAt ? new Date(payment.createdAt).toLocaleDateString() : '-'}</strong></td>
+        </tr>
+    </table>
+
+    <br />
+
+    <h3 style="margin-top: 20px;">Report Charges Summary</h3>
+
+    <table width="100%" cellpadding="10" cellspacing="0" border="1" 
+    style="border-collapse: collapse; text-align: left;">
+    
+        <tr>
+            <td width="70%">Business Report</td>
+            <td width="30%" align="right"> ${payment?.currency} ${businessAmount}</td>
+        </tr>
+    
+        ${payment?.currency === "INR" ? `
+        <tr>
+                <td>GST (18%)</td>
+                <td align="right">INR ${gstAmount}</td>
+            </tr>
+            ` : ""
+        }
+    
+        <tr>
+            <td><strong>TOTAL</strong></td>
+            <td align="right"><strong>${payment?.currency} ${totalAmount}</strong></td>
+        </tr>
+    
+    </table>
+    
+    <br />
+
+    <h3>CONTACT US</h3>
+    <p>
+        For any queries, <a href="https://www.globalbizreport.com/contact">click here to contact us</a>.
+    </p>
+
+</div>
+`;
+
+    // 4. Generate the PDF Buffer
+    const options = { format: 'A4', margin: { top: '20px', bottom: '20px' } };
+    const file = { content: htmlContent };
+
+    try {
+        const pdfBuffer = await htmlPdf.generatePdf(file, options);
+        return pdfBuffer; // This buffer can be sent to the frontend
+    } catch (err) {
+        console.log("PDF Generation Error:", err);
+        throw err;
+    }
+}
 
 // Helper to stream buffer to Cloudinary
 function uploadToCloudinary(buffer, folder, originalName) {
@@ -421,7 +561,6 @@ adminRouter.put("/update/report-requests/:id/status", async (req, res) => {
 });
 
 
-
 // Get all users
 adminRouter.get("/users", verifyAdmin, async (req, res) => {
     try {
@@ -593,6 +732,107 @@ adminRouter.patch("/company-claimed-payments/:id", verifyAdmin, async (req, res)
         return res.status(500).json({ error: "Failed to update claim status" });
     }
 });
+
+
+// download invoice
+adminRouter.get("/download/invoice/:paymentId", async (req, res) => {
+    try {
+        const { paymentId } = req.params;
+
+        if (!paymentId) {
+            return res.status(400).json({ success: false, message: "Payment Id is required" });
+        }
+
+        // 1️⃣ Parallel Execution: Fetch Razorpay data and local Payment record simultaneously
+        // Also used .lean() for faster read-only DB query
+        // const [razorpayPayment, payment] = await Promise.all([
+        //     razorpay.payments.fetch(paymentId),
+        //     Payment.findOne({ paymentId }).lean()
+        // ]);
+        const payment = await Payment.findOne({ paymentId }).lean()
+
+
+        if (!payment) {
+            return res.status(404).json({ success: false, message: "Payment record not found" });
+        }
+
+        // 2️⃣ Optimized Field Mapping (removed redundant or empty keys)
+        // const paymentDetails = {
+        //     payerEmail: razorpayPayment.email || "",
+        //     payerName: razorpayPayment.contact || "",
+        //     payerContact: razorpayPayment.contact || "",
+        //     upiId: razorpayPayment.vpa || razorpayPayment.upi?.vpa || "",
+        //     upiTransactionId: razorpayPayment.acquirer_data?.upi_transaction_id || "",
+        //     rrn: razorpayPayment.acquirer_data?.rrn || "",
+        //     bankName: razorpayPayment.bank || "",
+        //     cardLast4: razorpayPayment.card_id || "",
+        //     cardType: razorpayPayment.card_type || "",
+        //     acquirerData: razorpayPayment.acquirer_data || {},
+        //     description: razorpayPayment.description || "",
+        //     fee: razorpayPayment.fee || 0,
+        //     tax: razorpayPayment.tax || 0,
+        //     notes: razorpayPayment.notes || [],
+        //     receipt: razorpayPayment.receipt || "",
+        //     international: razorpayPayment.international || false,
+        //     wallet: razorpayPayment.wallet || "",
+        // };
+
+        // 3️⃣ Fetch related report request (using .lean() for performance)
+        const reportRequest = await ReportRequest.findById(payment.reportRequest).lean();
+
+        if (!reportRequest) {
+            console.warn("Report request not found for payment ID:", paymentId);
+        }
+
+        // 4️⃣ Prepare data and generate PDF
+        const reportData = {
+            paymentDetails: null,
+            reportRequest: reportRequest || {}, // Fallback to empty object to avoid crashes in template
+            payment: payment
+        };
+
+        const pdfBuffer = await downloadInvoiceAsBlob(reportData);
+
+        // 5️⃣ Dynamic Filename and Streaming Header Setup
+        const safeFileName = reportRequest?.targetCompany?.name
+            ? `Invoice_${reportRequest.targetCompany.name.replace(/[^a-z0-9]/gi, '_')}.pdf`
+            : `Invoice_${paymentId}.pdf`;
+
+        res.set({
+            'Content-Type': 'application/pdf',
+            'Content-Disposition': `attachment; filename="${safeFileName}"`,
+            'Content-Length': pdfBuffer.length,
+            'Cache-Control': 'no-cache' // Ensures the user always gets the latest version
+        });
+
+        // 6️⃣ Send binary buffer
+        return res.status(200).send(pdfBuffer);
+
+    } catch (error) {
+        // Detailed logging for debugging, but generic message for client security
+        console.error("Critical Invoice Download Error:", error);
+
+        // Check if error is from Razorpay specifically
+        if (error.statusCode === 400) {
+            return res.status(400).json({ message: "Invalid Payment ID provided to Razorpay" });
+        }
+
+        res.status(500).json({
+            success: false,
+            message: "Failed to generate or download invoice"
+        });
+    }
+});
+
+
+
+
+
+
+
+
+
+
 
 
 

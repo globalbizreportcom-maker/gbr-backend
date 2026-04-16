@@ -206,7 +206,7 @@ const pool = new Pool({
 
 // base api  
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully _*_" });
+    res.json({ message: "Backend connected successfully _**_" });
 });
 
 app.get('/api/companies/search', async (req, res) => {

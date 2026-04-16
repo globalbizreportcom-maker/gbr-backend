@@ -10,13 +10,13 @@ import { agenda } from "../agenda.js";
 import ClaimCompanyPayment from "../models/ClaimCompanyPayment.js";
 
 // test
-// const razorpay = new Razorpay({
+// export const razorpay = new Razorpay({
 //     key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_RLLP7cC84Ep2ms',
 //     key_secret: process.env.RAZORPAY_KEY_SECRET || 'lCg8ZeIBhKQ93v9CDmZ4QrS2',
 // });
 
 // production
-const razorpay = new Razorpay({
+export const razorpay = new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID || 'rzp_live_ROY0D3SgPD1pdG',
     key_secret: process.env.RAZORPAY_KEY_SECRET || '2wUhDOwdqHHTkTGLCNZobfvr',
 });
@@ -120,8 +120,8 @@ async function sendCreditReportEmail(recipientEmail, { paymentDetails, reportReq
 
     // Auto-calc only if currency is INR
     if (payment?.currency === "INR") {
-        gstAmount = (totalAmount * 0.18).toFixed(2);
-        businessAmount = (totalAmount - gstAmount).toFixed(2);
+        businessAmount = (totalAmount / 1.18).toFixed(2);
+        gstAmount = (totalAmount - businessAmount).toFixed(2);
     } else {
         // No GST for non-INR
         gstAmount = null;
@@ -499,6 +499,9 @@ export const createOrder = async (req, res) => {
             });
         }
 
+
+        console.log(order);
+
         // 7️⃣ Save payment record
         await Payment.create({
             user: userId,
@@ -517,7 +520,7 @@ export const createOrder = async (req, res) => {
         });
 
         // 8️⃣ Respond
-        res.json({ orderId: order?.id || null, amount: totalAmount, currency, key: razorpay.key_id });
+        res.json({ orderId: order?.id || null, amount: order ? order.amount : (totalAmount * 100), currency, key: razorpay.key_id });
     } catch (error) {
         console.log("createOrder error:", error);
         res.status(500).json({ error: "Failed to create order" });
@@ -841,7 +844,7 @@ export const claimCompanyOrderVerification = async (req, res) => {
 
 
 
-// PayPal environment
+// PayPal  test 
 // const Environment = paypal.core.SandboxEnvironment;
 // const client = new paypal.core.PayPalHttpClient(
 //     new Environment("AXE0e0T-WVhYAxm7bKHdfiufchoL27auBeQ5PgJQ8UzmExYoesadzdcBxet-A3l2l1_m8V3CLLijAll9",
@@ -849,7 +852,7 @@ export const claimCompanyOrderVerification = async (req, res) => {
 // );
 
 
-// live
+// PayPal  live
 const clientId = 'AbYmo3fDOLo929hTcfuSF5OAsTXMmvUiLalzVeXkqtWNVNlbaBP6erqJfy4bw1zP0MgBRoKhWUJ4LA6-'
 const clientSecret = 'ELYIqvUKnIaLiV1hG4I7Ty7xk4Mkw1FA2rkWCZzH9FqejbyfVeZTjn_fKsPeZZNGtosYYx2D5nLadvrU'
 const environment = new paypal.core.LiveEnvironment(clientId, clientSecret);
