@@ -18,149 +18,371 @@ import axios from "axios";
 import ClaimCompanyPayment from "../../models/ClaimCompanyPayment.js";
 import { razorpay } from "../../controllers/paymentController.js";
 import htmlPdf from "html-pdf-node";
-
+import PDFDocument from "pdfkit-table"
 
 
 const adminRouter = express.Router();
 const upload = multer({ storage: multer.memoryStorage() }); // keep  in memory
 
 
-async function downloadInvoiceAsBlob({ paymentDetails, reportRequest, payment }) {
-    // 1. Destructure Info (same as your original code)
-    const { name, email, requesterCompany, requesterCountry, gst } = reportRequest?.requesterInfo || {};
-    const totalAmount = payment?.amount || 0;
-    let businessAmount, gstAmount;
+// async function downloadInvoiceAsBlob({ paymentDetails, reportRequest, payment }) {
+//     // 1. Destructure Info (same as your original code)
+//     const { name, email, requesterCompany, requesterCountry, gst } = reportRequest?.requesterInfo || {};
+//     const totalAmount = payment?.amount || 0;
+//     let businessAmount, gstAmount;
 
-    // 2. Logic for Inclusive GST
-    if (payment?.currency === "INR") {
-        businessAmount = (totalAmount / 1.18).toFixed(2);
-        gstAmount = (totalAmount - businessAmount).toFixed(2);
-    } else {
-        gstAmount = null;
-        businessAmount = totalAmount;
-    }
+//     // 2. Logic for Inclusive GST
+//     if (payment?.currency === "INR") {
+//         businessAmount = (totalAmount / 1.18).toFixed(2);
+//         gstAmount = (totalAmount - businessAmount).toFixed(2);
+//     } else {
+//         gstAmount = null;
+//         businessAmount = totalAmount;
+//     }
 
-    const htmlContent = `
-<div style="
-font-family: Arial, sans-serif; 
-font-size: 14px; 
-color: #333; 
-max-width: 680px;      
-margin: 0 auto;       
-padding: 20px;         
-">
+//     const htmlContent = `
+// <div style="
+// font-family: Arial, sans-serif; 
+// font-size: 14px; 
+// color: #333; 
+// max-width: 680px;      
+// margin: 0 auto;       
+// padding: 20px;         
+// ">
 
-<table width="100%" cellpadding="0" cellspacing="0" border="0">
-    <tr>
-        <td align="center" style="padding-bottom: 15px;">
-            <img 
-                src="https://globalbizreport.com/images/logo-01.png" 
-                alt="Global Biz Report"
-                width="180"
-                height='50'
-                style="display: block;"
-            />
-        </td>
-    </tr>
-</table>
+// <table width="100%" cellpadding="0" cellspacing="0" border="0">
+//     <tr>
+//         <td align="center" style="padding-bottom: 15px;">
+//             <img 
+//                 src="https://globalbizreport.com/images/logo-01.png" 
+//                 alt="Global Biz Report"
+//                 width="180"
+//                 height='50'
+//                 style="display: block;"
+//             />
+//         </td>
+//     </tr>
+// </table>
 
-    <h2 style="text-align: center; margin-bottom: 5px;">Thanks for your Business Report order</h2>
-    <p style="text-align: center; margin-top: 0;">
-        Your order and payment details are below.
-    </p>
+//     <h2 style="text-align: center; margin-bottom: 5px;">Thanks for your Business Report order</h2>
+//     <p style="text-align: center; margin-top: 0;">
+//         Your order and payment details are below.
+//     </p>
 
-    <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;" />
+//     <hr style="border: 0; border-top: 1px solid #ccc; margin: 20px 0;" />
 
-    <h3 style="text-align: center; margin-bottom: 10px;">YOUR ORDER DETAILS</h3>
+//     <h3 style="text-align: center; margin-bottom: 10px;">YOUR ORDER DETAILS</h3>
 
-    <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
-        <tr>
-        <td width="50%" valign="top">
-        <strong>Billed To</strong><br /><br />
-    
-        ${name ? `${name}<br />` : ''}
-        ${email ? `${email}<br />` : ''}
-        ${requesterCompany ? `${requesterCompany}<br />` : ''}
-        ${requesterCountry ? `${requesterCountry}<br />` : ''}
-        ${gst ? `GSTIN: ${gst}<br />` : ''}
-    </td>
-    
-            <td width="50%" valign="top">
-                <strong>Issued By</strong><br /><br />
-                GLOBAL BIZ REPORT<br />
-                TECHCENT INNOVATIONS<br />
-                UNIT NO. M-1, 1ST FLOOR,<br />
-                LANDMARK CYBER PARK,<br />
-                SECTOR-67, GURUGRAM, HARYANA - 122102<br />
-                GSTIN: 06AKRPB9332P1ZK
-            </td>
-        </tr>
-    </table>
+//     <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
+//         <tr>
+//         <td width="50%" valign="top">
+//         <strong>Billed To</strong><br /><br />
 
-    <br />
+//         ${name ? `${name}<br />` : ''}
+//         ${email ? `${email}<br />` : ''}
+//         ${requesterCompany ? `${requesterCompany}<br />` : ''}
+//         ${requesterCountry ? `${requesterCountry}<br />` : ''}
+//         ${gst ? `GSTIN: ${gst}<br />` : ''}
+//     </td>
 
-    <h3 style="margin-top: 20px;">Invoice Details</h3>
+//             <td width="50%" valign="top">
+//                 <strong>Issued By</strong><br /><br />
+//                 GLOBAL BIZ REPORT<br />
+//                 TECHCENT INNOVATIONS<br />
+//                 UNIT NO. M-1, 1ST FLOOR,<br />
+//                 LANDMARK CYBER PARK,<br />
+//                 SECTOR-67, GURUGRAM, HARYANA - 122102<br />
+//                 GSTIN: 06AKRPB9332P1ZK
+//             </td>
+//         </tr>
+//     </table>
 
-    <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
-        <tr>
-            <td>Order ID: <strong>${payment?.orderId || '-'}</strong></td>
-        </tr>
-        <tr>
-            <td>Date: <strong>${payment?.createdAt ? new Date(payment.createdAt).toLocaleDateString() : '-'}</strong></td>
-        </tr>
-    </table>
+//     <br />
 
-    <br />
+//     <h3 style="margin-top: 20px;">Invoice Details</h3>
 
-    <h3 style="margin-top: 20px;">Report Charges Summary</h3>
+//     <table width="100%" cellpadding="10" cellspacing="0" border="1" style="border-collapse: collapse;">
+//         <tr>
+//             <td>Order ID: <strong>${payment?.orderId || '-'}</strong></td>
+//         </tr>
+//         <tr>
+//             <td>Date: <strong>${payment?.createdAt ? new Date(payment.createdAt).toLocaleDateString() : '-'}</strong></td>
+//         </tr>
+//     </table>
 
-    <table width="100%" cellpadding="10" cellspacing="0" border="1" 
-    style="border-collapse: collapse; text-align: left;">
-    
-        <tr>
-            <td width="70%">Business Report</td>
-            <td width="30%" align="right"> ${payment?.currency} ${businessAmount}</td>
-        </tr>
-    
-        ${payment?.currency === "INR" ? `
-        <tr>
-                <td>GST (18%)</td>
-                <td align="right">INR ${gstAmount}</td>
-            </tr>
-            ` : ""
-        }
-    
-        <tr>
-            <td><strong>TOTAL</strong></td>
-            <td align="right"><strong>${payment?.currency} ${totalAmount}</strong></td>
-        </tr>
-    
-    </table>
-    
-    <br />
+//     <br />
 
-    <h3>CONTACT US</h3>
-    <p>
-        For any queries, <a href="https://www.globalbizreport.com/contact">click here to contact us</a>.
-    </p>
+//     <h3 style="margin-top: 20px;">Report Charges Summary</h3>
 
-</div>
-`;
+//     <table width="100%" cellpadding="10" cellspacing="0" border="1" 
+//     style="border-collapse: collapse; text-align: left;">
 
-    // 4. Generate the PDF Buffer
-    const options = { format: 'A4', margin: { top: '20px', bottom: '20px' } };
-    const file = { content: htmlContent };
+//         <tr>
+//             <td width="70%">Business Report</td>
+//             <td width="30%" align="right"> ${payment?.currency} ${businessAmount}</td>
+//         </tr>
 
-    try {
-        const pdfBuffer = await htmlPdf.generatePdf(file, options);
-        return pdfBuffer; // This buffer can be sent to the frontend
-    } catch (err) {
-        console.log("PDF Generation Error:", err);
-        throw err;
-    }
-}
+//         ${payment?.currency === "INR" ? `
+//         <tr>
+//                 <td>GST (18%)</td>
+//                 <td align="right">INR ${gstAmount}</td>
+//             </tr>
+//             ` : ""
+//         }
+
+//         <tr>
+//             <td><strong>TOTAL</strong></td>
+//             <td align="right"><strong>${payment?.currency} ${totalAmount}</strong></td>
+//         </tr>
+
+//     </table>
+
+//     <br />
+
+//     <h3>CONTACT US</h3>
+//     <p>
+//         For any queries, <a href="https://www.globalbizreport.com/contact">click here to contact us</a>.
+//     </p>
+
+// </div>
+// `;
+
+//     // 4. Generate the PDF Buffer
+//     const options = { format: 'A4', margin: { top: '20px', bottom: '20px' } };
+//     const file = { content: htmlContent };
+
+//     try {
+//         const pdfBuffer = await htmlPdf.generatePdf(file, options);
+//         return pdfBuffer; // This buffer can be sent to the frontend
+//     } catch (err) {
+//         console.log("PDF Generation Error:", err);
+//         throw err;
+//     }
+// }
 
 // Helper to stream buffer to Cloudinary
+
+
+
+async function downloadInvoiceAsBlob({ reportRequest, payment }) {
+    // 1. Fetch Logo Buffer (Fetches the logo from your production URL to load on the server)
+    let logoBuffer = null;
+    try {
+        const logoResponse = await axios.get("https://globalbizreport.com/images/logo-01.png", {
+            responseType: "arraybuffer",
+            timeout: 5000 // Fast timeout fallback so the PDF doesn't hang if your asset server is slow
+        });
+        logoBuffer = Buffer.from(logoResponse.data);
+    } catch (err) {
+        console.warn("Failed to fetch remote logo, rendering without image:", err.message);
+    }
+
+    return new Promise((resolve, reject) => {
+        // 2. Destructure Info
+        const { name, email, requesterCompany, requesterCountry, gst } = reportRequest?.requesterInfo || {};
+        const totalAmount = payment?.amount || 0;
+        const currency = payment?.currency || "INR";
+        let businessAmount, gstAmount;
+
+        // 3. Logic for Inclusive GST
+        if (currency === "INR") {
+            businessAmount = (totalAmount / 1.18).toFixed(2);
+            gstAmount = (totalAmount - businessAmount).toFixed(2);
+        } else {
+            gstAmount = null;
+            businessAmount = totalAmount;
+        }
+
+        // Initialize PDF Document (A4, matching your A4 html margins)
+        const doc = new PDFDocument({ margin: 40, size: "A4" });
+        const buffers = [];
+
+        // Collect stream chunks
+        doc.on("data", (chunk) => buffers.push(chunk));
+        doc.on("end", () => resolve(Buffer.concat(buffers)));
+        doc.on("error", (err) => reject(err));
+
+        // --- PDF GENERATION ---
+
+        // 4. Logo Header (Matches original <img width="180" height="50" style="display: block;" />)
+        if (logoBuffer) {
+            // Calculates the X coordinate to center the 180px wide image on a standard A4 page (595px wide)
+            const pageWidth = doc.page.width;
+            const imageWidth = 180;
+            const centerX = (pageWidth - imageWidth) / 2;
+
+            doc.image(logoBuffer, centerX, doc.y, {
+                width: imageWidth,
+                height: 50
+            });
+
+            // Explicitly advance the document height by the image height + extra padding to mimic HTML spacing
+            doc.y += 50;
+            doc.moveDown(1.5);
+        } else {
+            // Text Fallback if image fails to download
+            doc.fontSize(18)
+                .font("Helvetica-Bold")
+                .fillColor("#333")
+                .text("GLOBAL BIZ REPORT", { align: "center" })
+                .moveDown(0.5);
+        }
+
+        // 5. Main Title & Subtitle
+        doc.font("Helvetica-Bold")
+            .fontSize(16)
+            .fillColor("#333333")
+            .text("Thanks for your Business Report order", { align: "center" })
+            .moveDown(0.5);
+
+        doc.font("Helvetica")
+            .fontSize(10.5)
+            .fillColor("#333333")
+            .text("Your order and payment details are below.", { align: "center" })
+            .moveDown(1.5);
+
+        // Horizontal line <hr style="border-top: 1px solid #ccc;" />
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor("#cccccc").lineWidth(1).stroke();
+        doc.moveDown(1.5);
+
+        // Section Title: YOUR ORDER DETAILS
+        doc.font("Helvetica-Bold")
+            .fontSize(11)
+            .fillColor("#333333")
+            .text("YOUR ORDER DETAILS", { align: "center" })
+            .moveDown(1);
+
+        // 6. Two-Column Table with Border ("Billed To" vs "Issued By")
+        const billedToString = [
+            name ? `${name}` : "",
+            email ? `${email}` : "",
+            requesterCompany ? `${requesterCompany}` : "",
+            requesterCountry ? `${requesterCountry}` : "",
+            gst ? `GSTIN: ${gst}` : ""
+        ].filter(Boolean).join("\n");
+
+        const issuedByString = [
+            "GLOBAL BIZ REPORT",
+            "TECHCENT INNOVATIONS",
+            "UNIT NO. M-1, 1ST FLOOR,",
+            "LANDMARK CYBER PARK,",
+            "SECTOR-67, GURUGRAM, HARYANA - 122102",
+            "GSTIN: 06AKRPB9332P1ZK"
+        ].join("\n");
+
+        const orderDetailsTable = {
+            headers: [
+                { label: "Billed To", property: "billed", renderer: null },
+                { label: "Issued By", property: "issued", renderer: null }
+            ],
+            rows: [
+                [billedToString, issuedByString]
+            ]
+        };
+
+        // Styling configuration to mimic the HTML layout borders and padding
+        doc.table(orderDetailsTable, {
+            width: 515,
+            prepareHeader: () => doc.font("Helvetica-Bold").fontSize(10).fillColor("#333333"),
+            prepareRow: () => doc.font("Helvetica").fontSize(9.5).fillColor("#333333"),
+            options: {
+                padding: [10, 10, 10, 10],
+                border: { size: 1, color: "#cccccc" }
+            }
+        });
+
+        doc.moveDown(1.5);
+
+        // 7. Invoice Details Header
+        doc.font("Helvetica-Bold")
+            .fontSize(11)
+            .fillColor("#333333")
+            .text("Invoice Details")
+            .moveDown(0.8);
+
+        // Custom Border configuration for basic tables
+        const basicTableOptions = {
+            width: 515,
+            prepareHeader: () => doc.font("Helvetica").fontSize(9.5).fillColor("#333333"),
+            prepareRow: () => doc.font("Helvetica").fontSize(9.5).fillColor("#333333"),
+            options: {
+                padding: [8, 10, 8, 10],
+                border: { size: 1, color: "#cccccc" }
+            }
+        };
+
+        const invoiceDetailsTable = {
+            headers: ["Metric", "Value"],
+            rows: [
+                ["Order ID", payment?.orderId || "-"],
+                ["Date", payment?.createdAt ? new Date(payment.createdAt).toLocaleDateString() : "-"]
+            ]
+        };
+
+        doc.table(invoiceDetailsTable, {
+            ...basicTableOptions,
+            prepareRow: (row, index) => {
+                doc.font("Helvetica").fontSize(9.5).fillColor("#333333");
+            }
+        });
+
+        doc.moveDown(1.5);
+
+        // 8. Report Charges Summary Table
+        doc.font("Helvetica-Bold")
+            .fontSize(11)
+            .fillColor("#333333")
+            .text("Report Charges Summary")
+            .moveDown(0.8);
+
+        const summaryRows = [
+            ["Business Report", `${currency} ${businessAmount}`]
+        ];
+
+        if (currency === "INR") {
+            summaryRows.push(["GST (18%)", `INR ${gstAmount}`]);
+        }
+
+        summaryRows.push(["TOTAL", `${currency} ${totalAmount}`]);
+
+        const summaryTable = {
+            headers: ["Description", "Amount"],
+            rows: summaryRows
+        };
+
+        doc.table(summaryTable, {
+            ...basicTableOptions,
+            prepareRow: (row, index) => {
+                // Bold the final TOTAL row
+                if (index === summaryRows.length - 1) {
+                    doc.font("Helvetica-Bold").fontSize(10).fillColor("#333333");
+                } else {
+                    doc.font("Helvetica").fontSize(9.5).fillColor("#333333");
+                }
+            }
+        });
+
+        doc.moveDown(2);
+
+        // 9. Contact Us Footer section
+        doc.font("Helvetica-Bold")
+            .fontSize(11)
+            .fillColor("#333333")
+            .text("CONTACT US")
+            .moveDown(0.5);
+
+        doc.font("Helvetica")
+            .fontSize(9.5)
+            .fillColor("#333333")
+            .text("For any queries, click here to contact us: ")
+            .fillColor("#1a0dab") // Style anchor text like a standard hyperlink
+            .text("https://www.globalbizreport.com/contact", { link: "https://www.globalbizreport.com/contact", underline: true });
+
+        // End PDF process cleanly
+        doc.end();
+    });
+}
+
 function uploadToCloudinary(buffer, folder, originalName) {
     let ext = path.extname(originalName); // e.g. ".pdf"
     const nameWithoutExt = path.basename(originalName, ext);

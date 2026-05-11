@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@paypal/checkout-server-sdk": "^1.0.3",
     "agenda": "^5.0.0",
     "axios": "^1.11.0",
@@ -37,6 +38,8 @@
     "multer": "^2.0.2",
     "nodemailer": "^7.0.6",
     "nodemon": "^3.1.10",
+    "pdfkit": "^0.18.0",
+    "pdfkit-table": "^0.1.99",
     "pg": "^8.20.0",
     "razorpay": "^2.9.6",
     "stream": "^0.0.3",

@@ -565,63 +565,6 @@ async function getAccessToken() {
     return data.access_token;
 }
 
-// // 2️⃣ Create order
-// app.post("/create-order", async (req, res) => {
-//     try {
-//         const { amount } = req.body;
-//         const accessToken = await getAccessToken();
-
-//         const orderRes = await fetch("https://api.paypal.com/v2/checkout/orders", {
-//             method: "POST",
-//             headers: {
-//                 "Authorization": `Bearer ${accessToken}`,
-//                 "Content-Type": "application/json",
-//             },
-//             body: JSON.stringify({
-//                 intent: "CAPTURE",
-//                 purchase_units: [{ amount: { currency_code: "USD", value: amount } }],
-//             }),
-//         });
-
-//         const orderData = await orderRes.json();
-//         res.json(orderData);
-//         return;
-
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ error: "Something went wrong" });
-//     }
-// });
-
-// // 3️⃣ Capture payment
-// app.post("/capture-order", async (req, res) => {
-//     try {
-//         const { orderId } = req.body;
-//         const accessToken = await getAccessToken();
-
-//         const captureRes = await fetch(`https://api.paypal.com/v2/checkout/orders/${orderId}/capture`, {
-//             method: "POST",
-//             headers: {
-//                 "Authorization": `Bearer ${accessToken}`,
-//                 "Content-Type": "application/json",
-//             },
-//         });
-
-//         const captureData = await captureRes.json();
-//         res.json(captureData);
-//         return;
-
-//     } catch (err) {
-//         console.error(err);
-//         res.status(500).json({ error: "Something went wrong" });
-//         return;
-
-//     }
-// });
-
-
-
-
 
 
 // const listUniqueCompanyPayments = async () => {
@@ -972,10 +915,106 @@ export const processAbandonedPayments = async () => {
 
 
 
+
+
+
+
+
+
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+
+// 1. Initialize with the 2026 performance model
+const genAI = new GoogleGenerativeAI('AIzaSyCMdMH1oYeUm5uSITcnbBfQr-YrxenfY_I');
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+
+const country = { name: 'India', code: 'IN', alpha3: 'IND' };
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Standalone Function: GlobalBiz Data Aggregator
+ * Target: Fetch 10-year historical data for 8 key business indicators
+ */
+const fetchComprehensiveWorldBankData = async (countryCode = 'IN') => {
+    console.log(`🚀 Fetching Comprehensive 10-Year Data for: ${countryCode}...`);
+
+    // Map of Indicator Codes to Friendly Names
+    const indicators = {
+        'NY.GDP.MKTP.CD': 'GDP_Current_USD',
+        'NY.GDP.MKTP.KD.ZG': 'GDP_Growth_Annual_Percent',
+        'FP.CPI.TOTL.ZG': 'Inflation_CPI_Percent',
+        'BX.KLT.DINV.CD.WD': 'FDI_Inflow_USD',
+        'NE.EXP.GNFS.CD': 'Exports_Goods_Services_USD',
+        'NE.IMP.GNFS.CD': 'Imports_Goods_Services_USD',
+        'IT.NET.USER.ZS': 'Internet_Usage_Percent_Pop',
+        'EG.ELC.ACCS.ZS': 'Access_To_Electricity_Percent'
+    };
+
+    const results = {};
+
+    try {
+        // We create a promise for each indicator to fetch data in parallel (faster)
+        const fetchPromises = Object.entries(indicators).map(async ([code, name]) => {
+            // Fetching 2014 to 2024 (10 years)
+            const url = `https://api.worldbank.org/v2/country/${countryCode}/indicator/${code}?format=json&date=2014:2024&per_page=50`;
+
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data[1]) {
+                // Clean and map the data: Year -> Value
+                results[name] = data[1]
+                    .filter(item => item.value !== null)
+                    .map(item => ({
+                        year: item.date,
+                        value: item.value.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                    }));
+            } else {
+                results[name] = "Data unavailable";
+            }
+        });
+
+        await Promise.all(fetchPromises);
+
+        // LOGGING THE RESULT
+        console.log('\n--- COMPREHENSIVE DATA DUMP ---');
+        console.log(JSON.stringify(results, null, 2));
+        console.log('\n✅ Data extraction complete. This payload is ready for 25-page report generation.');
+
+        return results;
+
+    } catch (error) {
+        console.error('❌ Error fetching World Bank data:', error.message);
+    }
+};
+
+// Execute
+// fetchComprehensiveWorldBankData();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // Connect to DB then start server
-
-
-
 const startServer = async () => {
     await connectDB();
     server.listen(PORT, () =>
