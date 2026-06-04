@@ -206,7 +206,7 @@ const pool = new Pool({
 
 // base api  
 app.get("/", (req, res) => {
-    res.json({ message: "Backend connected successfully _**_" });
+    res.json({ message: "Backend connected successfully _*_" });
 });
 
 app.get('/api/companies/search', async (req, res) => {
@@ -296,6 +296,7 @@ app.get("/api/company-details", metaLimiter, async (req, res) => {
         const companyEdit = await CompanyEdit.findOne({ companyId: cin }).lean();
 
         const isClamied = await ClaimCompanyPayment.findOne({ 'company.cin': cin, paymentStatus: 'paid' }).lean();
+        // console.log(companyData);
 
         // 3️⃣ Merge both in response
         res.status(200).json({
@@ -493,8 +494,192 @@ app.get("/user/companies-dir", fastLimiter, async (req, res) => {
 
 
 
+const SLUG_TO_INDUSTRY_MAP = {
+    "agriculture-and-allied-activities": "Agriculture and Allied Activities",
+    "business-services": "Business Services",
+    "community-personal-and-social-services": "Community, personal and Social Services",
+    "construction": "Construction",
+    "electricity-gas-and-water-companies": "Electricity, Gas and Water companies",
+    "finance": "Finance",
+    "insurance": "Insurance",
+    "manufacturing-food-stuffs": "Manufacturing (Food stuffs)",
+    "manufacturing-leather-and-products-thereof": "Manufacturing (Leather and products thereof)",
+    "manufacturing-machinery-and-equipments": "Manufacturing (Machinery and Equipments)",
+    "manufacturing-metals-and-chemicals-and-products-thereof": "Manufacturing (Metals and Chemicals, and products thereof)",
+    "manufacturing-others": "Manufacturing (Others)",
+    "manufacturing-paper-and-paper-products-publishing-printing-and-reproduction-of-recorded-media": "Manufacturing (Paper and Paper products, Publishing, printing and reproduction of recorded media)",
+    "manufacturing-textiles": "Manufacturing (Textiles)",
+    "manufacturing-wood-products": "Manufacturing (Wood Products)",
+    "mining-and-quarrying": "Mining and Quarrying",
+    "others": "Others",
+    "real-estate-and-renting": "Real Estate and Renting",
+    "trading": "Trading",
+    "transport-storage-and-communications": "Transport, storage and Communications"
+};
+
+// 2. High Performance Paginated Industry Data Route
+app.get('/state/directory/:state/:industry', async (req, res) => {
+    const { state, industry } = req.params;
+
+    console.log(state, industry);
 
 
+    const page = parseInt(req.query.page) || 1;
+    const LIMIT = 100;
+    const OFFSET = (page - 1) * LIMIT;
+
+    const dbIndustryName = SLUG_TO_INDUSTRY_MAP[industry];
+    if (!dbIndustryName) return res.status(404).json({ error: "Invalid Industry Classification Type Key" });
+
+    const dbStateName = state.replace(/-/g, " ");
+
+    try {
+        // Query 1: Data Fetching Array targeting indexes
+        const dataQuery = `
+            SELECT cin, companyname, companystatecode 
+            FROM companies 
+            WHERE LOWER(companystatecode) = LOWER($1) 
+              AND LOWER(companyindustrialclassification) = LOWER($2)
+            ORDER BY companyname ASC
+            LIMIT $3 OFFSET $4;
+        `;
+        const dataResult = await pool.query(dataQuery, [dbStateName, dbIndustryName, LIMIT, OFFSET]);
+
+        // Query 2: Performance-capped scan to prevent query freezes
+        const countQuery = `
+            SELECT COUNT(*) as total 
+            FROM (
+                SELECT 1 FROM companies 
+                WHERE LOWER(companystatecode) = LOWER($1) 
+                  AND LOWER(companyindustrialclassification) = LOWER($2) 
+                LIMIT 5001
+            ) as limited_count;
+        `;
+        const countResult = await pool.query(countQuery, [dbStateName, dbIndustryName]);
+        const totalCount = parseInt(countResult.rows[0].total);
+        const totalPages = Math.ceil(totalCount / LIMIT);
+
+        res.json({
+            companies: dataResult.rows,
+            totalPages,
+            currentPage: page,
+            dbStateName,
+            dbIndustryName
+        });
+
+    } catch (err) {
+        console.log("👉 API DATABASE SERVER EXCEPTION:", err);
+        res.status(500).json({ error: "Internal Database Engine Pipeline Failure", details: err.message });
+    }
+});
+
+
+
+// backend/server.js
+
+const SLUGIFIED_STATES = [
+    "andhra-pradesh", "arunachal-pradesh", "assam", "bihar", "chhattisgarh",
+    "goa", "gujarat", "haryana", "himachal-pradesh", "jharkhand",
+    "karnataka", "kerala", "madhya-pradesh", "maharashtra", "manipur",
+    "meghalaya", "mizoram", "nagaland", "odisha", "punjab",
+    "rajasthan", "sikkim", "tamil-nadu", "telangana", "tripura",
+    "uttar-pradesh", "uttarakhand", "west-bengal",
+    "andaman-and-nicobar-islands", "chandigarh", "dadra-and-nagar-haveli-and-daman-diu",
+    "delhi", "jammu-and-kashmir", "ladakh", "lakshadweep", "puducherry"
+];
+
+// backend/server.js
+
+const INDUSTRIES = [
+    "agriculture-and-allied-activities", "business-services", "community-personal-and-social-services",
+    "construction", "electricity-gas-and-water-companies", "finance", "insurance",
+    "manufacturing-food-stuffs", "manufacturing-leather-and-products-thereof",
+    "manufacturing-machinery-and-equipments", "manufacturing-metals-and-chemicals-and-products-thereof",
+    "manufacturing-others", "manufacturing-paper-and-paper-products-publishing-printing-and-reproduction-of-recorded-media",
+    "manufacturing-textiles", "manufacturing-wood-products", "mining-and-quarrying", "others",
+    "real-estate-and-renting", "trading", "transport-storage-and-communications"
+];
+
+
+
+// 2. STATE SPECIFIC SITEMAP ROUTE
+app.get('/sitemap-:state.xml', async (req, res) => {
+    const { state } = req.params;
+    if (!SLUGIFIED_STATES.includes(state)) return res.status(404).send("Not found");
+
+    res.header('Content-Type', 'application/xml');
+    const DOMAIN = "http://localhost:3000";
+    const dbStateName = state.replace(/-/g, " ");
+
+    try {
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+        xml += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+        // 1. Add the state landing hub itself
+        xml += `  <url>\n`;
+        xml += `    <loc>${DOMAIN}/directory/${state}</loc>\n`;
+        xml += `    <changefreq>daily</changefreq>\n`;
+        xml += `    <priority>0.8</priority>\n`;
+        xml += `  </url>\n`;
+
+        // 2. Loop through all 19 industries to find their pagination counts
+        for (const indSlug of INDUSTRIES) {
+            const dbIndustryName = SLUG_TO_INDUSTRY_MAP[indSlug];
+            if (!dbIndustryName) continue;
+
+            // Find how many rows exist for this exact state + industry pairing
+            const countQuery = `
+                SELECT COUNT(*) as total 
+                FROM companies 
+                WHERE LOWER(companystatecode) = LOWER($1) 
+                  AND LOWER(companyindustrialclassification) = LOWER($2);
+            `;
+            const countResult = await pool.query(countQuery, [dbStateName, dbIndustryName]);
+            const totalCompanies = parseInt(countResult.rows[0].total);
+
+            if (totalCompanies === 0) continue;
+
+            const LIMIT = 100;
+            const totalPages = Math.ceil(totalCompanies / LIMIT);
+
+            // Add every paginated page link to the sitemap (e.g., page 1 to page 45)
+            // Cap at 100 pages per industry to prevent sitemap bloat if necessary, or let it map naturally
+            for (let page = 1; page <= Math.min(totalPages, 500); page++) {
+                xml += `  <url>\n`;
+                xml += `    <loc>${DOMAIN}/directory/${state}/${indSlug}?page=${page}</loc>\n`;
+                xml += `    <changefreq>daily</changefreq>\n`;
+                xml += `    <priority>0.7</priority>\n`;
+                xml += `  </url>\n`;
+            }
+        }
+
+        xml += `</urlset>`;
+        res.send(xml);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send("Error compiling sitemap");
+    }
+});
+
+// 1. MASTER SITEMAP INDEX
+app.get('/sitemap.xml', (req, res) => {
+    res.header('Content-Type', 'application/xml');
+    const DOMAIN = "https://www.globalbizreport.com"; // Replace with your live domain
+
+    let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    xml += `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+
+    // Add the root links
+    SLUGIFIED_STATES.forEach(stateSlug => {
+        xml += `  <sitemap>\n`;
+        xml += `    <loc>${DOMAIN}/sitemap-${stateSlug}.xml</loc>\n`;
+        xml += `  </sitemap>\n`;
+    });
+
+    xml += `</sitemapindex>`;
+    res.send(xml);
+});
 
 
 
