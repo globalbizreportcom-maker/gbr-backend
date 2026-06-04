@@ -234,7 +234,7 @@ app.get('/api/companies/search', async (req, res) => {
 });
 
 
-// PostgreSQL version of /companies-meta
+// PostgreSQL version of /com panies-meta
 app.get("/companies-meta", metaLimiter, async (req, res) => {
     try {
         const result = await pool.query("SELECT COUNT(*) AS total FROM companies");
