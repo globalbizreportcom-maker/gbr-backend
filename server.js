@@ -310,7 +310,7 @@ app.get("/companies-directory", companiesLimiter, async (req, res) => {
 //         res.status(500).json({ error: "Server error" });
 //     }
 // });
-app.get("/api/company-details", metaLimiter, async (req, res) => {
+app.get("/api/company-details", async (req, res) => {
     const { cin } = req.query;
 
     if (!cin) {
