@@ -268,10 +268,48 @@ app.get("/companies-directory", companiesLimiter, async (req, res) => {
     }
 });
 
-// // PostgreSQL company details page
 
 // PostgreSQL + MongoDB company details page
 
+// app.get("/api/company-details", metaLimiter, async (req, res) => {
+//     const { cin } = req.query;
+
+//     if (!cin) {
+//         return res.status(400).json({ error: "CIN is required" });
+//     }
+
+//     try {
+//         // 1️⃣ Fetch company from Postgres
+//         const pgResult = await pool.query(
+//             `SELECT * FROM companies WHERE cin = $1`,
+//             [cin]
+//         );
+
+//         if (pgResult.rows.length === 0) {
+//             return res.status(404).json({ error: "Company not found" });
+//         }
+
+//         const companyData = pgResult.rows[0];
+
+//         // 2️⃣ Fetch company edit from MongoDB (if exists)
+//         const companyEdit = await CompanyEdit.findOne({ companyId: cin }).lean();
+
+//         const isClamied = await ClaimCompanyPayment.findOne({ 'company.cin': cin, paymentStatus: 'paid' }).lean();
+//         // console.log(companyData);
+
+//         // 3️⃣ Merge both in response
+//         res.status(200).json({
+//             claimedCompany: isClamied ? true : false,
+//             data: {
+//                 postgres: companyData,   // original company data from PostgreSQL
+//                 editedCompany: companyEdit || null, // edited data from MongoDB, or null if not exists
+//             },
+//         });
+
+//     } catch (err) {
+//         res.status(500).json({ error: "Server error" });
+//     }
+// });
 app.get("/api/company-details", metaLimiter, async (req, res) => {
     const { cin } = req.query;
 
@@ -280,9 +318,9 @@ app.get("/api/company-details", metaLimiter, async (req, res) => {
     }
 
     try {
-        // 1️⃣ Fetch company from Postgres
+        // 1️⃣ Fetch core company details from Postgres
         const pgResult = await pool.query(
-            `SELECT * FROM companies WHERE cin = $1`,
+            `SELECT * FROM companies WHERE cin = $1 LIMIT 1`,
             [cin]
         );
 
@@ -291,19 +329,42 @@ app.get("/api/company-details", metaLimiter, async (req, res) => {
         }
 
         const companyData = pgResult.rows[0];
+        const { companyname, companystatecode } = companyData;
+
+        // 🚀 NEW: Fetch the single next company alphabetically in the same state registry
+        const nextRes = await pool.query(
+            `SELECT companyname, cin, companystatecode 
+             FROM companies 
+             WHERE companystatecode = $1 AND companyname > $2 
+             ORDER BY companyname ASC LIMIT 1`,
+            [companystatecode, companyname]
+        );
+
+        // 🚀 NEW: Fetch the single previous company alphabetically in the same state registry
+        const prevRes = await pool.query(
+            `SELECT companyname, cin, companystatecode 
+             FROM companies 
+             WHERE companystatecode = $1 AND companyname < $2 
+             ORDER BY companyname DESC LIMIT 1`,
+            [companystatecode, companyname]
+        );
 
         // 2️⃣ Fetch company edit from MongoDB (if exists)
         const companyEdit = await CompanyEdit.findOne({ companyId: cin }).lean();
 
+        // Validate claim status via MongoDB payment record
         const isClamied = await ClaimCompanyPayment.findOne({ 'company.cin': cin, paymentStatus: 'paid' }).lean();
-        // console.log(companyData);
 
-        // 3️⃣ Merge both in response
+        // 3️⃣ Merge everything cleanly into your unified response object
         res.status(200).json({
             claimedCompany: isClamied ? true : false,
             data: {
-                postgres: companyData,   // original company data from PostgreSQL
+                postgres: companyData,              // original company data from PostgreSQL
                 editedCompany: companyEdit || null, // edited data from MongoDB, or null if not exists
+                chainLinks: {
+                    previous: prevRes.rows[0] || null, // Unique backward crawling pointer
+                    next: nextRes.rows[0] || null      // Unique forward crawling pointer
+                }
             },
         });
 
@@ -311,7 +372,6 @@ app.get("/api/company-details", metaLimiter, async (req, res) => {
         res.status(500).json({ error: "Server error" });
     }
 });
-
 
 app.get("/search-companies", companiesLimiter, async (req, res) => {
     try {
@@ -490,10 +550,6 @@ app.get("/user/companies-dir", fastLimiter, async (req, res) => {
     }
 });
 
-
-
-
-
 const SLUG_TO_INDUSTRY_MAP = {
     "agriculture-and-allied-activities": "Agriculture and Allied Activities",
     "business-services": "Business Services",
@@ -520,9 +576,6 @@ const SLUG_TO_INDUSTRY_MAP = {
 // 2. High Performance Paginated Industry Data Route
 app.get('/state/directory/:state/:industry', async (req, res) => {
     const { state, industry } = req.params;
-
-    console.log(state, industry);
-
 
     const page = parseInt(req.query.page) || 1;
     const LIMIT = 100;
@@ -573,10 +626,6 @@ app.get('/state/directory/:state/:industry', async (req, res) => {
     }
 });
 
-
-
-// backend/server.js
-
 const SLUGIFIED_STATES = [
     "andhra-pradesh", "arunachal-pradesh", "assam", "bihar", "chhattisgarh",
     "goa", "gujarat", "haryana", "himachal-pradesh", "jharkhand",
@@ -588,8 +637,6 @@ const SLUGIFIED_STATES = [
     "delhi", "jammu-and-kashmir", "ladakh", "lakshadweep", "puducherry"
 ];
 
-// backend/server.js
-
 const INDUSTRIES = [
     "agriculture-and-allied-activities", "business-services", "community-personal-and-social-services",
     "construction", "electricity-gas-and-water-companies", "finance", "insurance",
@@ -599,8 +646,6 @@ const INDUSTRIES = [
     "manufacturing-textiles", "manufacturing-wood-products", "mining-and-quarrying", "others",
     "real-estate-and-renting", "trading", "transport-storage-and-communications"
 ];
-
-
 
 // 2. STATE SPECIFIC SITEMAP ROUTE
 app.get('/sitemap-:state.xml', async (req, res) => {
@@ -1110,77 +1155,73 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 
 
 // 1. Initialize with the 2026 performance model
-const genAI = new GoogleGenerativeAI('AIzaSyCMdMH1oYeUm5uSITcnbBfQr-YrxenfY_I');
+const genAI = new GoogleGenerativeAI(process.env.COMPANY_LATEST_NEWS_API);
 const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
-const country = { name: 'India', code: 'IN', alpha3: 'IND' };
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Standalone Function: GlobalBiz Data Aggregator
- * Target: Fetch 10-year historical data for 8 key business indicators
- */
-const fetchComprehensiveWorldBankData = async (countryCode = 'IN') => {
-    console.log(`🚀 Fetching Comprehensive 10-Year Data for: ${countryCode}...`);
+// Change to .post to clean up payload delivery
 
-    // Map of Indicator Codes to Friendly Names
-    const indicators = {
-        'NY.GDP.MKTP.CD': 'GDP_Current_USD',
-        'NY.GDP.MKTP.KD.ZG': 'GDP_Growth_Annual_Percent',
-        'FP.CPI.TOTL.ZG': 'Inflation_CPI_Percent',
-        'BX.KLT.DINV.CD.WD': 'FDI_Inflow_USD',
-        'NE.EXP.GNFS.CD': 'Exports_Goods_Services_USD',
-        'NE.IMP.GNFS.CD': 'Imports_Goods_Services_USD',
-        'IT.NET.USER.ZS': 'Internet_Usage_Percent_Pop',
-        'EG.ELC.ACCS.ZS': 'Access_To_Electricity_Percent'
-    };
+app.post('/api/company-news', metaLimiter, async (req, res) => {
+    const { companyData } = req.body;
 
-    const results = {};
+    if (!companyData) {
+        return res.status(400).json({ success: false, error: "Missing company parameters body data" });
+    }
 
     try {
-        // We create a promise for each indicator to fetch data in parallel (faster)
-        const fetchPromises = Object.entries(indicators).map(async ([code, name]) => {
-            // Fetching 2014 to 2024 (10 years)
-            const url = `https://api.worldbank.org/v2/country/${countryCode}/indicator/${code}?format=json&date=2014:2024&per_page=50`;
+        const co = companyData;
 
-            const response = await fetch(url);
-            const data = await response.json();
+        const prompt = `
+            You are an expert corporate financial journalist. Based on these strict government registry records, generate exactly 3 short, realistic "Latest Updates" or news briefs for this company.
+            
+            Company Name: ${co.companyname}
+            Registry Status: ${co.companystatus}
+            Incorporation Date: ${co.companyregistrationdate_date}
+            State Jurisdiction: ${co.companystatecode}
+            Industry Classification: ${co.companyindustrialclassification}
+            NIC Activity Code: ${co.nic_code}
+            Authorized Capital: ₹${co.authorizedcapital}
+            Paid-up Capital: ₹${co.paidupcapital}
+            Registered Office: ${co.registered_office_address}
 
-            if (data[1]) {
-                // Clean and map the data: Year -> Value
-                results[name] = data[1]
-                    .filter(item => item.value !== null)
-                    .map(item => ({
-                        year: item.date,
-                        value: item.value.toLocaleString(undefined, { maximumFractionDigits: 2 })
-                    }));
-            } else {
-                results[name] = "Data unavailable";
-            }
+            CRITICAL RULES:
+            1. Return the output as a clean JSON array containing exactly 3 objects.
+            2. Do not include markdown code block formatting (No \`\`\`json tags). Return raw text string parsing only.
+            3. Each object must have three fields: "date", "title", and "summary".
+            4. Make the news sound authentic to its industry (${co.companyindustrialclassification || 'General Business'}). Mention its capital structure or location realistically.
+            5. Ensure the dates are realistic and recent (ranging between 2024 and 2026).
+        `;
+
+        // 🔥 FIXED: Call your initialized "model" instance using the correct syntax
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+
+        const rawText = response.text().trim();
+        console.log("Raw Gemini Output:\n", rawText);
+
+        // Strip any accidental markdown blocks that the LLM might have returned
+        const cleanedText = rawText.replace(/```json|```/g, "").trim();
+        const newsArray = JSON.parse(cleanedText);
+
+        res.status(200).json({ success: true, updates: newsArray });
+
+    } catch (err) {
+        console.log("Gemini Generation Exception:", err);
+
+        // Return your safe fallback payload if the API times out
+        res.status(200).json({
+            success: true,
+            updates: [
+                {
+                    date: "05 Jun 2026",
+                    title: "Corporate Governance Review Completed",
+                    summary: `Operational records for ${companyData.companyname || 'this entity'} remain consistent with registered state parameters.`
+                }
+            ]
         });
-
-        await Promise.all(fetchPromises);
-
-        // LOGGING THE RESULT
-        console.log('\n--- COMPREHENSIVE DATA DUMP ---');
-        console.log(JSON.stringify(results, null, 2));
-        console.log('\n✅ Data extraction complete. This payload is ready for 25-page report generation.');
-
-        return results;
-
-    } catch (error) {
-        console.error('❌ Error fetching World Bank data:', error.message);
     }
-};
-
-// Execute
-// fetchComprehensiveWorldBankData();
-
-
-
-
-
+});
 
 
 
